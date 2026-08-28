@@ -43,20 +43,29 @@ const KAPPA_OPEN_LO = 0.03;
 const KAPPA_OPEN_HI = 0.085;
 
 /**
- * F1 longitudinal envelope (public benchmarks, full grip, dry):
- * 0–100 km/h ~2.4 s, 0–200 ~4.8 s, 0–300 ~10 s; peak braking ~5–5.5 G.
+ * F1 longitudinal envelope (public telemetry, full grip, dry):
+ * 0–100 km/h ~2.6 s, 0–200 ~4.9 s, 0–300 ~8.5 s.
+ * Braking is downforce-dependent: ~5.9 G at 300 km/h, ~2 G mechanical at
+ * low speed (downforce scales with v², so stopping power fades as the car
+ * slows).
  */
 const PEAK_TRACTION_ACCEL_MPS2 = 15;
-/** Speed (m/s) where aero drag sharply reduces acceleration (~209 km/h). */
-const AERO_SPEED_KNEE_MPS = 58;
-const AERO_TAPER_POWER = 3.2;
+/** Speed (m/s) where aero drag sharply reduces acceleration (~245 km/h). */
+const AERO_SPEED_KNEE_MPS = 68;
+const AERO_TAPER_POWER = 3.1;
 /** Traction ramp off the line — avoids instant max thrust (wheelspin control). */
-const TRACTION_RAMP_SPEED_MPS = 12;
-const TRACTION_RAMP_FLOOR = 0.38;
+const TRACTION_RAMP_SPEED_MPS = 15;
+const TRACTION_RAMP_FLOOR = 0.26;
 /** First-order response: throttle ~220 ms, brakes hit harder ~100 ms. */
 const ACCEL_RESPONSE_S = 0.22;
 const BRAKE_RESPONSE_S = 0.1;
-const MAX_BRAKE_MPS2 = 52;
+/** Mechanical (zero-downforce) braking grip ≈ 2 G. */
+const BRAKE_MECH_MPS2 = 20;
+/** Extra braking added by downforce at the 300 km/h reference (total ≈ 5.9 G). */
+const BRAKE_AERO_MPS2 = 38;
+/** Downforce reference speed: 300 km/h. */
+const AERO_REF_MPS = 300 / 3.6;
+const MAX_BRAKE_MPS2 = BRAKE_MECH_MPS2 + BRAKE_AERO_MPS2;
 const SPIN_BRAKE_RATIO = 1.35;
 const SLIDE_BRAKE_RATIO = 1.15;
 const SPIN_DURATION_S = 2.2;
@@ -79,11 +88,16 @@ export const longitudinalAccelMps2 = (speedMps: number, grip: number): number =>
   return PEAK_TRACTION_ACCEL_MPS2 * g * traction * aero * Math.min(1.08, g + 0.1);
 };
 
-/** Braking decel cap (m/s²) — slightly softer under ~40 km/h as downforce bleeds off. */
+/**
+ * Braking decel cap (m/s²): mechanical grip + aero downforce term (∝ v²).
+ * Full ~5.9 G is only available at speed; as the car slows the downforce
+ * bleeds off with v² and stopping power fades toward ~2 G.
+ */
 export const longitudinalBrakeMps2 = (speedMps: number, grip: number): number => {
   const g = Math.max(0.12, grip);
-  const lowSpeed = speedMps < 11 ? 0.72 + (speedMps / 11) * 0.28 : 1;
-  return MAX_BRAKE_MPS2 * g * lowSpeed;
+  const v = Math.max(0, speedMps);
+  const aero = Math.min(1.1, (v / AERO_REF_MPS) ** 2);
+  return (BRAKE_MECH_MPS2 + BRAKE_AERO_MPS2 * aero) * g;
 };
 
 const ENGINE_MULT: Record<PhysicsEngineMode, number> = {
@@ -288,7 +302,10 @@ const speedLimitFromKappa = (k: number, grip: number): number => {
 export const brakingTargetMps = (t: number, grip: number): number => {
   const lut = buildKappaLut();
   const g = Math.max(0.12, grip);
-  const aPlan = MAX_BRAKE_MPS2 * g * BRAKE_PLAN_RATIO;
+  // Planned decel a(v) = aMech + aAero·v² (downforce braking), with margin.
+  const aMech = BRAKE_MECH_MPS2 * g * BRAKE_PLAN_RATIO;
+  const aAero = (BRAKE_AERO_MPS2 / (AERO_REF_MPS * AERO_REF_MPS)) * g * BRAKE_PLAN_RATIO;
+  const mechOverAero = aMech / aAero;
   let allowed = speedLimitFromKappa(sampleKappa(t), grip);
   const u = ((t % 1) + 1) % 1;
   const x = u * LUT_SAMPLES;
@@ -299,7 +316,10 @@ export const brakingTargetMps = (t: number, grip: number): number => {
     const s = (firstIdx + j - x) * metresPerSample;
     if (s <= 0) continue;
     const v = speedLimitFromKappa(lut[(firstIdx + j) % LUT_SAMPLES], grip);
-    const cap = Math.sqrt(v * v + 2 * aPlan * s);
+    // Integrating v·dv/ds = aMech + aAero·v² backwards from the corner:
+    const cap = Math.sqrt(
+      Math.max(0, (v * v + mechOverAero) * Math.exp(2 * aAero * s) - mechOverAero),
+    );
     if (cap < allowed) allowed = cap;
   }
   return allowed;
