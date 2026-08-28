@@ -1,16 +1,16 @@
 import * as THREE from "three";
-import { getGridSlot, metresToUnits } from "@/lib/trackCurve";
+import { getStartFinishPose, metresToUnits } from "@/lib/trackCurve";
 
-/** Start gantry ~22 m ahead of pole — in front of the grid, visible from overview/follow. */
+/** Start gantry over the S/F line — a few metres ahead so the grid sees all five reds. */
 export const getStartGantryPose = (): {
   position: THREE.Vector3;
   yaw: number;
 } => {
-  const pole = getGridSlot(0);
-  const position = pole.position
+  const sf = getStartFinishPose();
+  const position = sf.position
     .clone()
-    .addScaledVector(pole.tangent, metresToUnits(22));
-  position.y += metresToUnits(0.4);
-  const yaw = Math.atan2(pole.tangent.x, pole.tangent.z);
+    .addScaledVector(sf.tangent, metresToUnits(3));
+  position.y += metresToUnits(0.05);
+  const yaw = Math.atan2(sf.tangent.x, sf.tangent.z);
   return { position, yaw };
 };

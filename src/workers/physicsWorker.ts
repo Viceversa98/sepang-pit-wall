@@ -64,6 +64,9 @@ const writeBodyToShared = (index: number, body: RAPIER.RigidBody): void => {
   const speed = Math.hypot(linvel.x, linvel.z);
 
   const floats = views.floats;
+  const flags = vehicleFlagsDecode(floats[base + VehicleField.flags]);
+  const kinematicSpeed = floats[base + VehicleField.speed];
+
   floats[base + VehicleField.posX] = t.x;
   floats[base + VehicleField.posY] = t.y;
   floats[base + VehicleField.posZ] = t.z;
@@ -74,7 +77,7 @@ const writeBodyToShared = (index: number, body: RAPIER.RigidBody): void => {
   floats[base + VehicleField.velX] = linvel.x;
   floats[base + VehicleField.velY] = linvel.y;
   floats[base + VehicleField.velZ] = linvel.z;
-  floats[base + VehicleField.speed] = speed;
+  floats[base + VehicleField.speed] = flags.kinematic ? kinematicSpeed : speed;
 };
 
 const applyKinematicFromShared = (index: number, body: RAPIER.RigidBody): void => {
@@ -116,7 +119,7 @@ const applyDriverInputs = (index: number, body: RAPIER.RigidBody): void => {
   floats[base + VehicleField.brake] = brake;
 
   const rotation = body.rotation();
-  const fwd = rotateVectorByQuat(rotation, { x: 0, y: 0, z: -1 });
+  const fwd = rotateVectorByQuat(rotation, { x: 0, y: 0, z: 1 });
   const speed = Math.hypot(body.linvel().x, body.linvel().z);
 
   const engineForce = 420 * throttle;

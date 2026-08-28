@@ -134,8 +134,10 @@ const main = async () => {
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
+  fs.mkdirSync(path.dirname(publicCopyPath), { recursive: true });
+  fs.writeFileSync(publicCopyPath, JSON.stringify(payload, null, 2));
   console.log(
-    `Wrote ${outPath} — elev ${minElev.toFixed(1)}–${maxElev.toFixed(1)} m, grid ${GRID}², span ${((maxWx - minWx) * METRES_PER_UNIT).toFixed(0)} m`,
+    `Wrote ${outPath} (+ public copy) — elev ${minElev.toFixed(1)}–${maxElev.toFixed(1)} m, grid ${GRID}², span ${((maxWx - minWx) * METRES_PER_UNIT).toFixed(0)} m`,
   );
 
   // Sanity: sample at first track point

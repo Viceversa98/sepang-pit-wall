@@ -209,6 +209,67 @@ const buildWorkshops = (placement: CampusPlacement): THREE.Group => {
   return group;
 };
 
+const buildHillCanopy = (placement: CampusPlacement): THREE.Group => {
+  const group = buildOpenHill(placement);
+  const { size } = placement;
+  addMesh(
+    group,
+    new THREE.BoxGeometry(size.x * 1.08, size.y * 0.06, size.z * 0.92),
+    createRoof(),
+    new THREE.Vector3(0, size.y * 0.42, size.z * 0.08),
+  );
+  return group;
+};
+
+const buildMedical = (placement: CampusPlacement): THREE.Group => {
+  const group = new THREE.Group();
+  const { size } = placement;
+  addMesh(group, new THREE.BoxGeometry(size.x, size.y, size.z), createConcrete(), new THREE.Vector3(0, 0, 0));
+  const crossMat = new THREE.MeshStandardMaterial({
+    color: "#ef4444",
+    roughness: 0.5,
+    metalness: 0.1,
+  });
+  addMesh(
+    group,
+    new THREE.BoxGeometry(size.x * 0.22, size.y * 0.35, size.z * 0.04),
+    crossMat,
+    new THREE.Vector3(0, size.y * 0.08, size.z * 0.48),
+  );
+  addMesh(
+    group,
+    new THREE.BoxGeometry(size.x * 0.08, size.y * 0.55, size.z * 0.04),
+    crossMat,
+    new THREE.Vector3(0, size.y * 0.08, size.z * 0.48),
+  );
+  addMesh(group, new THREE.BoxGeometry(size.x, size.y * 0.06, size.z), createRoof(), new THREE.Vector3(0, size.y * 0.48, 0));
+  return group;
+};
+
+const buildControlPost = (placement: CampusPlacement): THREE.Group => {
+  const group = new THREE.Group();
+  const { size } = placement;
+  addMesh(
+    group,
+    new THREE.BoxGeometry(size.x * 0.65, size.y * 0.55, size.z * 0.7),
+    createConcrete(CAMPUS_COLOR.concreteDark),
+    new THREE.Vector3(0, -size.y * 0.12, 0),
+  );
+  addMesh(
+    group,
+    new THREE.BoxGeometry(size.x * 1.1, size.y * 0.05, size.z * 0.85),
+    createRoof(),
+    new THREE.Vector3(0, size.y * 0.38, 0),
+  );
+  addMesh(
+    group,
+    new THREE.PlaneGeometry(size.x * 0.5, size.y * 0.35),
+    createGlass(),
+    new THREE.Vector3(0, size.y * 0.02, size.z * 0.36),
+  );
+  return group;
+};
+
 export const buildCampusKit = (placement: CampusPlacement): THREE.Group => {
   const kit: Record<CampusKit, (p: CampusPlacement) => THREE.Group> = {
     pit: buildPitGarage,
@@ -217,10 +278,13 @@ export const buildCampusKit = (placement: CampusPlacement): THREE.Group => {
     twin: buildTwinTowers,
     covered: buildCoveredStand,
     openHill: buildOpenHill,
+    hillCanopy: buildHillCanopy,
     welcome: buildWelcome,
     chalets: buildChalet,
     southPaddock: buildSouthPaddock,
     workshops: buildWorkshops,
+    medical: buildMedical,
+    controlPost: buildControlPost,
   };
   return kit[placement.def.kit](placement);
 };

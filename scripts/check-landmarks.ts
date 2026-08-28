@@ -4,8 +4,8 @@ import {
   cornerWorld,
   MAIN_HALF,
   resolveCampusPlacements,
-} from "../lib/sepangCampusLayout";
-import { getTrackCurve, metresToUnits } from "../lib/trackCurve";
+} from "../src/lib/sepangCampusLayout";
+import { getTrackCurve, metresToUnits } from "../src/lib/trackCurve";
 
 /** Asphalt half-width + 14 m grass buffer — visual clear, not just kerb. */
 const CLEAR_MIN = MAIN_HALF + metresToUnits(14);
@@ -32,6 +32,10 @@ console.log({
 });
 
 for (const p of placements) {
+  if (p.def.fixedWorld) {
+    console.log(p.id, `#${p.segmentIndex}`, "fixedWorld", "SKIP");
+    continue;
+  }
   const hx = p.size.x / 2;
   const hz = p.size.z / 2;
   const corners = [

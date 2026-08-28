@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { sampleCarPose } from "@/lib/carPose";
+import { getGridSlot } from "@/lib/trackCurve";
+import { quatFromTangent } from "@/lib/vehicleOrientation";
 import { stepCarVisual, type CarVisualPose } from "@/lib/carVisual";
+import { getLiveRaceCars } from "@/lib/raceLiveCars";
 import { buildTrack, type TrackBuildResult } from "@/scene/buildTrack";
 import { createF1CarMesh, updateF1CarBrakeLights, updateF1CarWheels } from "@/scene/F1CarMesh";
-import { getRaceSimShared } from "@/sim/raceSimContext";
-import { readVehicleTransform } from "@/shared/sharedState";
 import {
   createFollowCameraState,
   updateFollowCamera,
@@ -13,6 +14,7 @@ import {
 } from "@/scene/FollowCamera";
 import { createStartLights, updateStartLights, type StartLightsGroup } from "@/scene/StartLights";
 import { createSepangCampus, type SepangCampusHandle } from "@/scene/campus/SepangCampus";
+import { buildTrackside, type TracksideHandle } from "@/scene/trackside";
 import { buildTerrain, type TerrainBuildResult } from "@/scene/buildTerrain";
 import {
   createAtmosphere,
@@ -57,7 +59,7 @@ export class RaceScene {
   private startLights!: StartLightsGroup;
   private orbitControls: OrbitControls | null = null;
   private followState: FollowCameraState = createFollowCameraState();
-  private lookTarget = new THREE.Vector3();
+  private orientScratch = new THREE.Quaternion();
   private poseScratch = {
     position: new THREE.Vector3(),
     tangent: new THREE.Vector3(),
@@ -73,6 +75,7 @@ export class RaceScene {
   private ambientLight!: THREE.AmbientLight;
   private fillLight!: THREE.DirectionalLight;
   private campus!: SepangCampusHandle;
+  private trackside!: TracksideHandle;
   private pitCrew!: PitStopCrewField;
   private terrain!: TerrainBuildResult;
   private atmosphere!: AtmosphereHandle;
@@ -105,6 +108,9 @@ export class RaceScene {
 
     this.campus = createSepangCampus();
     this.scene.add(this.campus.group);
+
+    this.trackside = buildTrackside();
+    this.scene.add(this.trackside.group);
 
     this.pitCrew = new PitStopCrewField();
     this.scene.add(this.pitCrew.group);
@@ -161,7 +167,8 @@ export class RaceScene {
     this.scene.add(this.rainPoints);
 
     this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.orbitControls.enablePan = false;
+    this.orbitControls.enablePan = true;
+    this.orbitControls.screenSpacePanning = true;
     this.orbitControls.minDistance = 45;
     this.orbitControls.maxDistance = 280;
     this.orbitControls.maxPolarAngle = Math.PI / 2.15;
@@ -183,6 +190,8 @@ export class RaceScene {
     if (this.disposed) return;
 
     const state = useRaceStore.getState();
+    // Racing: read per-frame sim state (60+ Hz) — the Svelte store only syncs at 20 Hz.
+    const cars = state.phase === "racing" ? getLiveRaceCars() : state.cars;
 
     if (state.rainIntensity !== this.lastRainIntensity) {
       this.track.setRainIntensity(state.rainIntensity);
@@ -191,9 +200,9 @@ export class RaceScene {
       this.lastRainIntensity = state.rainIntensity;
     }
 
-    this.updateCars(state.cars, state.phase, dt);
+    this.updateCars(cars, state.phase, dt);
     this.campus.update(this.camera);
-    this.pitCrew.update(this.camera, state.cars, state.phase, this.cars);
+    this.pitCrew.update(this.camera, cars, state.phase, this.cars);
     this.updateRain(state.rainIntensity, dt);
     updateStartLights(
       this.startLights,
@@ -204,8 +213,9 @@ export class RaceScene {
     );
 
     if (state.phase !== this.lastRacePhase) {
-      if (state.phase === "racing") {
+      if (state.phase === "starting" || state.phase === "racing") {
         this.overviewSnapKey = "";
+        this.followState = createFollowCameraState();
       }
       this.lastRacePhase = state.phase;
     }
@@ -216,12 +226,13 @@ export class RaceScene {
       }
       if (state.cameraMode === "overview") {
         this.overviewSnapKey = "";
+        this.followState = createFollowCameraState();
       }
       this.lastCameraMode = state.cameraMode;
     }
 
     if (state.cameraMode === "follow") {
-      const player = state.cars.find((c) => c.isPlayer);
+      const player = cars.find((c) => c.isPlayer);
       const entry = this.cars.get(PLAYER_ID);
       if (player && entry) {
         const smoothed = { ...player, ...entry.visual };
@@ -237,7 +248,7 @@ export class RaceScene {
         );
       }
     } else if (state.cameraMode === "overview") {
-      this.updateOverviewCamera(state);
+      this.updateOverviewCamera(state, cars);
       this.orbitControls?.update();
     }
 
@@ -262,6 +273,7 @@ export class RaceScene {
     this.terrain.dispose();
     this.atmosphere.dispose();
     this.campus.dispose();
+    this.trackside.dispose();
     this.pitCrew.dispose();
     this.startLights.userData.dispose();
 
@@ -358,89 +370,68 @@ export class RaceScene {
   }
 
   private updateCars(cars: CarState[], phase: RacePhase, dt: number): void {
-    const shared = getRaceSimShared();
-
     for (const meta of FIELD_META) {
       const car = cars.find((c) => c.id === meta.id);
       const entry = this.cars.get(meta.id);
       if (!car || !entry) continue;
 
-      const usePhysics =
-        shared && phase === "racing" && !car.isBoxing && !car.finished;
+      // Racing feeds per-frame live sim state, so render the raw pose directly;
+      // predict-and-correct smoothing is only needed for 20 Hz store snapshots.
+      const smoothed: CarVisualPose =
+        phase === "racing"
+          ? {
+              lapProgress: car.lapProgress,
+              laneOffsetM: car.laneOffsetM,
+              pitProgress: car.pitProgress,
+            }
+          : stepCarVisual(entry.visual, car, dt, entry.visualReady);
+      entry.visual = smoothed;
+      entry.visualReady = true;
 
-      if (usePhysics) {
-        const xf = readVehicleTransform(shared.floats, entry.gridIndex);
-        entry.group.position.set(xf.position[0], xf.position[1], xf.position[2]);
-        entry.group.quaternion.set(
-          xf.quaternion[0],
-          xf.quaternion[1],
-          xf.quaternion[2],
-          xf.quaternion[3],
-        );
+      const pose = sampleCarPose(
+        { ...car, ...smoothed },
+        phase,
+        meta.id,
+        entry.gridIndex,
+        this.poseScratch,
+      );
 
-        if (car.status === "sliding" || car.status === "spun") {
-          const wobble =
-            Math.sin(performance.now() * 0.028) * (car.status === "spun" ? 0.55 : 0.22);
-          entry.group.rotateY(wobble);
-        }
+      entry.group.position.copy(pose.position);
+      if (phase === "ready" || phase === "starting") {
+        // Match painted grid box yaw (+Z nose toward yellow front stripe).
+        entry.group.rotation.set(0, getGridSlot(entry.gridIndex).rotationY, 0);
       } else {
-        const smoothed = stepCarVisual(entry.visual, car, dt, entry.visualReady);
-        entry.visual = smoothed;
-        entry.visualReady = true;
+        entry.group.quaternion.copy(quatFromTangent(pose.tangent, this.orientScratch));
+      }
 
-        const pose = sampleCarPose(
-          { ...car, ...smoothed },
-          phase,
-          meta.id,
-          entry.gridIndex,
-          this.poseScratch,
-        );
-
-        entry.group.position.copy(pose.position);
-        this.lookTarget.copy(pose.position).add(pose.tangent);
-        entry.group.lookAt(this.lookTarget);
-
-        if (car.status === "sliding" || car.status === "spun") {
-          const wobble =
-            Math.sin(performance.now() * 0.028) * (car.status === "spun" ? 0.55 : 0.22);
-          entry.group.rotateY(wobble);
-        }
+      if (car.status === "sliding" || car.status === "spun") {
+        const wobble =
+          Math.sin(performance.now() * 0.028) * (car.status === "spun" ? 0.55 : 0.22);
+        entry.group.rotateY(wobble);
       }
 
       const mesh = entry.group.children.find((c) => c.name === "f1Car");
       if (mesh) {
         updateF1CarBrakeLights(mesh, car.brakeIntensity);
-        if (usePhysics) {
-          const xf = readVehicleTransform(shared!.floats, entry.gridIndex);
-          updateF1CarWheels(mesh, xf.speed, xf.steeringAngle, dt);
-        }
+        updateF1CarWheels(mesh, car.speedMps, 0, dt);
       }
     }
   }
 
-  /** World position used for cameras — physics mesh during racing, spline pose otherwise. */
+  /** World position used for cameras — matches updateCars mesh pose. */
   private playerWorldPosition(
-    player: CarState,
+    _player: CarState,
     entry: CarEntry,
-    phase: RacePhase,
+    _phase: RacePhase,
   ): THREE.Vector3 {
-    const useMesh =
-      phase === "racing" && !player.isBoxing && !player.finished && getRaceSimShared();
-    if (useMesh) {
-      return this.overviewNextTarget.copy(entry.group.position);
-    }
-    const pose = sampleCarPose(
-      { ...player, ...entry.visual },
-      phase,
-      PLAYER_ID,
-      entry.gridIndex,
-      this.poseScratch,
-    );
-    return this.overviewNextTarget.copy(pose.position);
+    return this.overviewNextTarget.copy(entry.group.position);
   }
 
-  private updateOverviewCamera(state: ReturnType<typeof useRaceStore.getState>): void {
-    const player = state.cars.find((c) => c.isPlayer);
+  private updateOverviewCamera(
+    state: ReturnType<typeof useRaceStore.getState>,
+    cars: CarState[],
+  ): void {
+    const player = cars.find((c) => c.isPlayer);
     const entry = this.cars.get(PLAYER_ID);
     if (!player || !entry) return;
 

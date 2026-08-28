@@ -10,6 +10,7 @@ import {
   PIT_SEG_GARAGE_END,
   TRACK_LENGTH_M,
 } from "./trackCurve";
+import { sampleTerrainHeight } from "./terrainHeight";
 
 export type CampusBuildingId =
   | "pit"
@@ -23,6 +24,9 @@ export type CampusBuildingId =
   | "paddockChalets"
   | "southPaddock"
   | "hillstandK2"
+  | "hillstandC2"
+  | "medicalCenter"
+  | "controlPostWelcome"
   | "motorsportPark";
 
 export type CampusKit =
@@ -32,10 +36,13 @@ export type CampusKit =
   | "twin"
   | "covered"
   | "openHill"
+  | "hillCanopy"
   | "welcome"
   | "chalets"
   | "southPaddock"
-  | "workshops";
+  | "workshops"
+  | "medical"
+  | "controlPost";
 
 export type CampusBuildingDef = {
   id: CampusBuildingId;
@@ -54,6 +61,8 @@ export type CampusBuildingDef = {
   tSpanM?: number;
   segmentCount?: number;
   yawOverride?: number;
+  /** Skip track offset — place at fixed world XZ (Three.js units). */
+  fixedWorld?: { x: number; z: number };
   shadow: "cast" | "receive";
   lod: "hero" | "mid" | "far";
 };
@@ -128,24 +137,27 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
   {
     id: "k1",
     kit: "covered",
-    /** Outside of T1 right-hander (bank −1 = runoff outside apex). */
-    t: PIT_EXIT_T + 0.038,
+    /** OSM world anchor — end of main straight / T1. */
+    t: 0.107,
     bank: -1,
-    lateralClearanceM: 40,
-    sizeM: { x: 12, y: 12, z: 24 },
+    lateralClearanceM: 0,
+    sizeM: { x: 14, y: 12, z: 55 },
     alongM: 0,
+    fixedWorld: { x: 19.246, z: 134.17 },
+    yawOverride: -1.55,
     shadow: "cast",
     lod: "mid",
   },
   {
     id: "grandstandF",
     kit: "covered",
-    t: 0.988,
-    bank: -1,
+    /** OSM-aligned: Turns 7 & 8. */
+    t: 0.436,
+    bank: 1,
     lateralClearanceM: 36,
-    sizeM: { x: 18, y: 12, z: 120 },
+    sizeM: { x: 18, y: 12, z: 140 },
     alongM: 0,
-    tSpanM: 120,
+    tSpanM: 140,
     segmentCount: 5,
     shadow: "cast",
     lod: "mid",
@@ -153,11 +165,37 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
   {
     id: "welcome",
     kit: "welcome",
-    t: 0.995,
+    t: 0.089,
     bank: 1,
-    lateralClearanceM: 62,
-    sizeM: { x: 36, y: 12, z: 48 },
-    alongM: 8,
+    lateralClearanceM: 0,
+    sizeM: { x: 24, y: 12, z: 18 },
+    alongM: 0,
+    fixedWorld: { x: -16.615, z: 146.622 },
+    yawOverride: -0.2,
+    shadow: "receive",
+    lod: "mid",
+  },
+  {
+    id: "medicalCenter",
+    kit: "medical",
+    t: 0.946,
+    bank: -1,
+    lateralClearanceM: 32,
+    sizeM: { x: 18, y: 8, z: 14 },
+    alongM: 0,
+    shadow: "receive",
+    lod: "mid",
+  },
+  {
+    id: "controlPostWelcome",
+    kit: "controlPost",
+    t: 0.089,
+    bank: 1,
+    lateralClearanceM: 0,
+    sizeM: { x: 12, y: 6, z: 10 },
+    alongM: 0,
+    fixedWorld: { x: -23.28, z: 169.15 },
+    yawOverride: 0.35,
     shadow: "receive",
     lod: "mid",
   },
@@ -177,14 +215,13 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
   {
     id: "southPaddock",
     kit: "southPaddock",
-    /** Outer infield of back straight — modest runoff avoids overshooting into main straight. */
-    t: 0.86,
+    t: 0.825,
     bank: -1,
     lateralClearanceM: 28,
-    sizeM: { x: 12, y: 10, z: 48 },
+    sizeM: { x: 28, y: 10, z: 96 },
     alongM: 0,
-    tSpanM: 48,
-    segmentCount: 2,
+    tSpanM: 96,
+    segmentCount: 3,
     shadow: "receive",
     lod: "far",
   },
@@ -198,6 +235,20 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     alongM: 0,
     tSpanM: 180,
     segmentCount: 5,
+    shadow: "receive",
+    lod: "far",
+  },
+  {
+    id: "hillstandC2",
+    kit: "hillCanopy",
+    /** Inferred from OSM support cluster — Turns 9–11 GA embankment. */
+    t: 0.489,
+    bank: -1,
+    lateralClearanceM: 85,
+    sizeM: { x: 45, y: 8, z: 90 },
+    alongM: 0,
+    tSpanM: 90,
+    segmentCount: 1,
     shadow: "receive",
     lod: "far",
   },
@@ -274,6 +325,25 @@ export const resolveCampusPlacements = (): CampusPlacement[] => {
         y: metresToUnits(def.sizeM.y),
         z: metresToUnits(def.sizeM.z) / count,
       };
+
+      if (def.fixedWorld) {
+        const position = new THREE.Vector3(
+          def.fixedWorld.x,
+          sampleTerrainHeight(def.fixedWorld.x, def.fixedWorld.z) + size.y / 2,
+          def.fixedWorld.z,
+        );
+        const pose = getPoseAt(def.t);
+        out.push({
+          id: def.id,
+          def,
+          position,
+          yaw: def.yawOverride ?? yawFromTangent(pose.tangent),
+          size,
+          segmentIndex: i,
+          segmentCount: count,
+        });
+        continue;
+      }
 
       // Pit garage + paddock chalets: on pit CAD, outside (away from racing line).
       if (def.kit === "pit" || def.kit === "chalets") {

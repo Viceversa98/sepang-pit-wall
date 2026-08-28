@@ -103,7 +103,6 @@ export const createStartLights = (): StartLightsGroup => {
   const lamps = LAMP_X.map((x) => createLamp(x, beamY, lampR));
   for (const lamp of lamps) root.add(lamp.group);
 
-  root.visible = false;
   root.userData = {
     lamps,
     dispose: () => {
@@ -131,7 +130,8 @@ export const updateStartLights = (
   startLightsGreen: boolean,
   rainIntensity: number,
 ): void => {
-  const showGantry = phase === "starting" || phase === "racing" || phase === "finished";
+  // Gantry stays over the grid for the whole race desk session (hidden only on landing).
+  const showGantry = phase !== "landing";
   group.visible = showGantry;
   if (!showGantry) return;
 

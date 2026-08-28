@@ -533,8 +533,6 @@ export const createF1CarMesh = (color: string, isPlayer = false): THREE.Group =>
     });
   };
 
-  // Mesh is modeled nose +Z; sim/physics use Three.js −Z forward.
-  root.rotation.y = Math.PI;
 
   return root;
 };

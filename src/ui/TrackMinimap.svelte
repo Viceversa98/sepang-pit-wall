@@ -116,7 +116,5 @@
       />
     {/each}
   </svg>
-  <p class="mt-1 font-mono text-[7px] text-white/35">
-    DRS · pit ● · S/F ○ · Esri imagery in 3D view
-  </p>
+  <p class="mt-1 font-mono text-[7px] text-white/35">DRS · pit ● · S/F ○</p>
 </div>

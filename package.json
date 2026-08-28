@@ -11,7 +11,14 @@
     "terrain:fetch": "node scripts/fetch-sepang-terrain.mjs",
     "terrain:sample": "node scripts/sample-sepang.cjs",
     "terrain:ortho": "node scripts/bake-sepang-ortho.mjs",
-    "terrain:rebuild": "npm run terrain:fetch && npm run terrain:sample && npm run terrain:ortho"
+    "terrain:rebuild": "nub run terrain:fetch && nub run terrain:sample && nub run terrain:ortho",
+    "assets:build": "node scripts/build-pit-crew-glb.mjs && node scripts/build-campus-glbs.mjs",
+    "assets:car": "node scripts/build-academy-car-glb.mjs",
+    "campus:fetch": "node scripts/fetch-sepang-osm.mjs",
+    "campus:align": "node scripts/align-sepang-osm.mjs",
+    "campus:export": "node scripts/build-campus-glbs.mjs",
+    "campus:check": "nub x tsx --tsconfig tsconfig.json scripts/check-landmarks.ts",
+    "campus:rebuild": "nub run campus:fetch && nub run campus:align && nub run campus:export"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",

@@ -31,22 +31,20 @@ export const isOnStartingGrid = (
   return behindM <= GRID_DEPTH_M;
 };
 
-/** Grid sits just behind S/F — progress > 0.85 on lap 1 is still before the line. */
-const GRID_GHOST_PROGRESS = 0.85;
-const FIRST_LAP_MIN_MS = 2500;
-
-/** Along-track distance for standings (handles lap-1 grid ghost near S/F). */
+/** Along-track distance for standings. Pre-race only: order grid rows behind S/F. */
 export const standingsDistance = (
   car: Pick<CarState, "currentLap" | "lapProgress" | "currentLapTimeMs">,
+  gridOrder = false,
 ): number => {
-  if (
-    car.currentLap === 1 &&
-    car.currentLapTimeMs < FIRST_LAP_MIN_MS &&
-    car.lapProgress > GRID_GHOST_PROGRESS
-  ) {
+  if (gridOrder && isOnStartingGrid(car)) {
     return car.lapProgress - 1;
   }
-  return car.currentLap + car.lapProgress;
+  // Lap 1: wrap01() at S/F can run before currentLap increments (MIN_LAP_MS gate).
+  let lap = car.currentLap;
+  if (lap === 1 && !isOnStartingGrid(car) && car.lapProgress < 0.5) {
+    lap = 2;
+  }
+  return lap + car.lapProgress;
 };
 
 export const raceDistance = (car: Pick<CarState, "currentLap" | "lapProgress">): number =>
@@ -62,32 +60,37 @@ const sameCorridor = (a: number, b: number): boolean => Math.abs(a - b) < LANE_O
 
 const clampLane = (m: number): number => Math.max(-MAX_LANE_M, Math.min(MAX_LANE_M, m));
 
-/** Bleed speed when too close — avoids backward position snaps (caterpillar stutter). */
+/** Range where followers start tapering their closing speed. */
+export const FOLLOW_RANGE_M = 60;
+/** Planned follower decel when closing on a car ahead (m/s²). */
+const FOLLOW_BRAKE_MPS2 = 26;
+/** Hard ceiling on gap-control decel per frame — keeps braking physical (no speed teleports). */
+const FOLLOW_MAX_DECEL_MPS2 = 45;
+
+/**
+ * Anticipatory gap control, speed-only (never snaps position — snaps caused
+ * the caterpillar accordion). Outside MIN_GAP the closing speed tapers with
+ * braking distance (sqrt envelope); inside MIN_GAP the follower drops below
+ * the leader's pace to reopen the gap. The cap is rate-limited so a follower
+ * can never lose more speed per frame than real brakes allow — instant
+ * clamps were the shockwave that rippled down car trains.
+ */
 const applyGapSpeedCap = (
   car: CarState,
   ahead: CarState,
   gapM: number,
+  dt: number,
 ): void => {
-  if (gapM <= 0 || gapM >= MIN_GAP_M) return;
-  const shortfall = MIN_GAP_M - gapM;
-  const cap = ahead.speedMps * (0.9 + 0.08 * (gapM / MIN_GAP_M)) - shortfall * 0.45;
-  car.speedMps = Math.max(0, Math.min(car.speedMps, cap));
-  if (shortfall > MIN_GAP_M * 0.55) {
-    const capDist = raceDistance(ahead) - MIN_GAP_M / TRACK_LENGTH_M;
-    if (raceDistance(car) > capDist + 0.00015) {
-      setRaceDistance(car, capDist + 0.00015);
-    }
+  if (gapM <= 0 || gapM >= FOLLOW_RANGE_M) return;
+  let cap: number;
+  if (gapM > MIN_GAP_M) {
+    const margin = gapM - MIN_GAP_M;
+    cap = Math.sqrt(ahead.speedMps * ahead.speedMps + 2 * FOLLOW_BRAKE_MPS2 * margin);
+  } else {
+    cap = ahead.speedMps * (0.7 + 0.3 * (gapM / MIN_GAP_M));
   }
-};
-
-const setRaceDistance = (car: CarState, dist: number): void => {
-  const safe = Math.max(1, dist);
-  car.currentLap = Math.floor(safe);
-  car.lapProgress = safe - car.currentLap;
-  if (car.lapProgress >= 1) {
-    car.currentLap += 1;
-    car.lapProgress -= 1;
-  }
+  const rateLimited = Math.max(cap, car.speedMps - FOLLOW_MAX_DECEL_MPS2 * dt);
+  car.speedMps = Math.max(0, Math.min(car.speedMps, rateLimited));
 };
 
 const corridorFree = (
@@ -227,7 +230,7 @@ export const resolveTraffic = (cars: CarState[], dt: number, skipCollisions = fa
       if (cut !== null) {
         car.laneTargetM = cut;
       } else {
-        applyGapSpeedCap(car, nearest, nearestGap);
+        applyGapSpeedCap(car, nearest, nearestGap, dt);
         car.laneTargetM = car.laneOffsetM;
       }
     } else {
@@ -239,7 +242,8 @@ export const resolveTraffic = (cars: CarState[], dt: number, skipCollisions = fa
     car.laneOffsetM = clampLane(car.laneOffsetM + (car.laneTargetM - car.laneOffsetM) * alpha);
   }
 
-  // Second pass: enforce gap again after lane moves (same corridor only)
+  // Second pass: enforce gap again after lane moves (same corridor only).
+  // Uses the full follow range so closing speed tapers before MIN_GAP.
   for (const car of next) {
     if (car.finished || car.isBoxing || car.status === "retired") continue;
     for (const other of next) {
@@ -247,8 +251,8 @@ export const resolveTraffic = (cars: CarState[], dt: number, skipCollisions = fa
         continue;
       if (!sameCorridor(car.laneOffsetM, other.laneOffsetM)) continue;
       const gap = alongGapM(car, other);
-      if (gap > 0 && gap < MIN_GAP_M) {
-        applyGapSpeedCap(car, other, gap);
+      if (gap > 0 && gap < FOLLOW_RANGE_M) {
+        applyGapSpeedCap(car, other, gap, dt);
       }
     }
   }

@@ -29,6 +29,15 @@ export default defineConfig({
   worker: {
     format: "es",
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/three")) return "three";
+        },
+      },
+    },
+  },
   optimizeDeps: {
     exclude: ["@dimforge/rapier3d-compat"],
   },

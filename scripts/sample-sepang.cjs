@@ -8,7 +8,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const csvPath = path.join(root, "public", "tracks", "sepang-centerline.csv");
-const heightmapPath = path.join(root, "public", "terrain", "sepang-heightmap.json");
+const heightmapPath = path.join(root, "src", "data", "sepang-heightmap.json");
 const trackCurvePath = path.join(root, "src", "lib", "trackCurve.ts");
 /** 1 world unit = 4 real metres — F1 cars readable, road width real. */
 const METRES_PER_UNIT = 4;

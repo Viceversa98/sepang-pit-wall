@@ -29,19 +29,64 @@ const toLocalM = (lat, lng) => {
   };
 };
 
-const ringCentroid = (ring) => {
-  let x = 0;
-  let y = 0;
-  let n = 0;
+const ringToLocalM = (ring) => {
+  const out = [];
   for (const p of ring) {
     if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) continue;
-    const loc = toLocalM(p.lat, p.lon);
-    x += loc.eastM;
-    y += loc.northM;
-    n += 1;
+    out.push(toLocalM(p.lat, p.lon));
   }
-  if (n === 0) return null;
-  return { eastM: x / n, northM: y / n };
+  return out;
+};
+
+const ringCentroid = (ringLocalM) => {
+  if (!ringLocalM.length) return null;
+  let x = 0;
+  let y = 0;
+  for (const p of ringLocalM) {
+    x += p.eastM;
+    y += p.northM;
+  }
+  return { eastM: x / ringLocalM.length, northM: y / ringLocalM.length };
+};
+
+const polygonAreaM2 = (ringLocalM) => {
+  if (ringLocalM.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < ringLocalM.length; i++) {
+    const a = ringLocalM[i];
+    const b = ringLocalM[(i + 1) % ringLocalM.length];
+    area += a.eastM * b.northM - b.eastM * a.northM;
+  }
+  return Math.abs(area) * 0.5;
+};
+
+const orientedBboxM = (ringLocalM) => {
+  let minE = Infinity;
+  let maxE = -Infinity;
+  let minN = Infinity;
+  let maxN = -Infinity;
+  for (const p of ringLocalM) {
+    minE = Math.min(minE, p.eastM);
+    maxE = Math.max(maxE, p.eastM);
+    minN = Math.min(minN, p.northM);
+    maxN = Math.max(maxN, p.northM);
+  }
+  const widthM = maxE - minE;
+  const depthM = maxN - minN;
+  return { widthM, depthM, minE, maxE, minN, maxN };
+};
+
+const categorizeBuilding = (name, tags) => {
+  const n = (name ?? "").toLowerCase();
+  if (n === "roof") return "roof_skip";
+  if (n.includes("grandstand") || n.includes("hillstand") || tags.building === "grandstand") {
+    return "grandstand";
+  }
+  if (n.includes("pit") || n.includes("paddock") || n.includes("padock")) return "pit";
+  if (n.includes("medical")) return "medical";
+  if (n.includes("welcome") || n.includes("control")) return "welcome";
+  if (n.includes("tower")) return "welcome";
+  return "support";
 };
 
 const loadExisting = () => {
@@ -83,43 +128,58 @@ const main = async () => {
   }
   if (!data) {
     existing.osm = {
-      fetchedAt: null,
-      query: "way/relation[building] bbox",
-      buildings: [],
-      note: `Overpass unavailable (${lastErr.slice(0, 180)}); layout footprints remain authoritative`,
+      ...existing.osm,
+      fetchedAt: existing.osm?.fetchedAt ?? null,
+      query: existing.osm?.query ?? "way/relation[building] out geom",
+      buildings: existing.osm?.buildings ?? [],
+      note: `Overpass unavailable (${lastErr.slice(0, 180)}); kept ${existing.osm?.buildings?.length ?? 0} cached buildings`,
     };
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, `${JSON.stringify(existing, null, 2)}\n`);
     console.warn("Overpass unavailable — footprints JSON kept layout-only");
     return;
   }
+
   const buildings = [];
   for (const el of data.elements ?? []) {
     const geom = el.geometry ?? el.members?.flatMap((m) => m.geometry ?? []) ?? [];
     if (!geom.length) continue;
-    const centroid = ringCentroid(geom);
+    const ringLocalM = ringToLocalM(geom);
+    if (ringLocalM.length < 3) continue;
+    const centroid = ringCentroid(ringLocalM);
     if (!centroid) continue;
     const tags = el.tags ?? {};
+    const name = tags.name ?? tags.building ?? null;
+    const bbox = orientedBboxM(ringLocalM);
+    const category = categorizeBuilding(name, tags);
     buildings.push({
       osmId: el.id,
       type: el.type,
-      name: tags.name ?? tags.building ?? null,
+      name,
       levels: tags["building:levels"] ? Number(tags["building:levels"]) : null,
       heightM: tags.height ? Number.parseFloat(tags.height) : null,
+      category,
+      areaM2: polygonAreaM2(ringLocalM),
+      bboxM: { widthM: bbox.widthM, depthM: bbox.depthM },
       centroid,
-      vertexCount: geom.length,
+      ringLocalM,
+      vertexCount: ringLocalM.length,
     });
   }
+
   existing.origin = ORIGIN;
   existing.bbox = BBOX;
   existing.osm = {
     fetchedAt: new Date().toISOString(),
-    query: "way/relation[building] bbox",
+    query: "way/relation[building] out geom",
     buildings,
   };
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, `${JSON.stringify(existing, null, 2)}\n`);
-  console.log(`Wrote ${buildings.length} OSM buildings → ${path.relative(root, outPath)}`);
+  const renderable = buildings.filter((b) => b.category !== "roof_skip").length;
+  console.log(
+    `Wrote ${buildings.length} OSM buildings (${renderable} renderable) → ${path.relative(root, outPath)}`,
+  );
 };
 
 main().catch((err) => {

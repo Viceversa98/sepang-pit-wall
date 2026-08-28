@@ -11,9 +11,18 @@ export type PhysicsEngineMode = "push" | "standard" | "save";
 export const SEPANG_RACE_LAP_S = 94;
 export const SEPANG_AVG_SPEED_MPS = TRACK_LENGTH_M / SEPANG_RACE_LAP_S;
 
-/** Main-straight trap with DRS (312 km/h). */
-export const STRAIGHT_MAX_KMH = 312;
-export const STRAIGHT_MAX_MPS = STRAIGHT_MAX_KMH / 3.6;
+/** F1 corner-speed reference (312 km/h trap) — scales corner limits only. */
+export const CORNER_REF_KMH = 312;
+const CORNER_REF_MPS = CORNER_REF_KMH / 3.6;
+
+/** Straight-line target ceiling (no 312 km/h cap). Corners still limit via cornerSpeedLimit. */
+export const STRAIGHT_CEILING_KMH = 420;
+export const STRAIGHT_CEILING_MPS = STRAIGHT_CEILING_KMH / 3.6;
+
+/** @deprecated Use CORNER_REF_KMH or STRAIGHT_CEILING_KMH. */
+export const STRAIGHT_MAX_KMH = CORNER_REF_KMH;
+/** @deprecated Use STRAIGHT_CEILING_MPS for straight targets. */
+export const STRAIGHT_MAX_MPS = CORNER_REF_MPS;
 
 /** Average race progress rate at Sepang F1 pace (lap fraction / s). */
 export const RACE_BASE_PROGRESS_RATE = SEPANG_AVG_SPEED_MPS / TRACK_LENGTH_M;
@@ -23,15 +32,33 @@ export const GAME_LAP_TIME_S = SEPANG_RACE_LAP_S;
 
 const LUT_SAMPLES = 384;
 const HAIRPIN_FLOOR_RATIO = 0.42;
-/** Brake-demand horizon — avoids frame-rate spikes at corner entry. */
-const BRAKE_HORIZON_S = 0.35;
 /** Look ahead along lap for corner speed (metres on 5543 m Sepang). */
 const CORNER_LOOKAHEAD_M = 35;
-/** F1 longitudinal limits (m/s²). */
-const MAX_ACCEL_MPS2 = 13;
-const MAX_BRAKE_MPS2 = 55;
+/** Braking-envelope plan horizon — must cover 300 km/h → hairpin (~150 m). */
+const BRAKE_LOOKAHEAD_M = 260;
+/** Plan with 70% of peak braking so per-frame demand stays under lockup thresholds. */
+const BRAKE_PLAN_RATIO = 0.7;
+/** Curvature band where the point limit opens from corner speed to the straight ceiling. */
+const KAPPA_OPEN_LO = 0.03;
+const KAPPA_OPEN_HI = 0.085;
+
+/**
+ * F1 longitudinal envelope (public benchmarks, full grip, dry):
+ * 0–100 km/h ~2.4 s, 0–200 ~4.8 s, 0–300 ~10 s; peak braking ~5–5.5 G.
+ */
+const PEAK_TRACTION_ACCEL_MPS2 = 15;
+/** Speed (m/s) where aero drag sharply reduces acceleration (~209 km/h). */
+const AERO_SPEED_KNEE_MPS = 58;
+const AERO_TAPER_POWER = 3.2;
+/** Traction ramp off the line — avoids instant max thrust (wheelspin control). */
+const TRACTION_RAMP_SPEED_MPS = 12;
+const TRACTION_RAMP_FLOOR = 0.38;
+/** First-order response: throttle ~220 ms, brakes hit harder ~100 ms. */
+const ACCEL_RESPONSE_S = 0.22;
+const BRAKE_RESPONSE_S = 0.1;
+const MAX_BRAKE_MPS2 = 52;
 const SPIN_BRAKE_RATIO = 1.35;
-const SLIDE_BRAKE_RATIO = 1.08;
+const SLIDE_BRAKE_RATIO = 1.15;
 const SPIN_DURATION_S = 2.2;
 const SLIDE_DURATION_S = 0.55;
 const RETIRE_DAMAGE = 80;
@@ -40,6 +67,24 @@ const CONTACT_GAP_M = 5;
 const CONTACT_CLOSING_MPS = 22;
 const CONTACT_DAMAGE_TRAIL = 28;
 const CONTACT_DAMAGE_LEAD = 12;
+
+/** Along-track acceleration cap (m/s²) — traction at low speed, aero-limited at trap. */
+export const longitudinalAccelMps2 = (speedMps: number, grip: number): number => {
+  const g = Math.max(0.12, grip);
+  const traction =
+    speedMps < TRACTION_RAMP_SPEED_MPS
+      ? TRACTION_RAMP_FLOOR + (1 - TRACTION_RAMP_FLOOR) * (speedMps / TRACTION_RAMP_SPEED_MPS)
+      : 1;
+  const aero = 1 / (1 + Math.pow(Math.max(0, speedMps) / AERO_SPEED_KNEE_MPS, AERO_TAPER_POWER));
+  return PEAK_TRACTION_ACCEL_MPS2 * g * traction * aero * Math.min(1.08, g + 0.1);
+};
+
+/** Braking decel cap (m/s²) — slightly softer under ~40 km/h as downforce bleeds off. */
+export const longitudinalBrakeMps2 = (speedMps: number, grip: number): number => {
+  const g = Math.max(0.12, grip);
+  const lowSpeed = speedMps < 11 ? 0.72 + (speedMps / 11) * 0.28 : 1;
+  return MAX_BRAKE_MPS2 * g * lowSpeed;
+};
 
 const ENGINE_MULT: Record<PhysicsEngineMode, number> = {
   push: 1.12,
@@ -205,12 +250,59 @@ const effectiveKappa = (t: number): number => {
   return kNow * 0.4 + kPeak * 0.6;
 };
 
-/** Max along-track speed at progress t given current grip. */
+/** @deprecated Use brakingTargetMps — it anticipates corners with real braking distance. */
 export const cornerSpeedLimit = (t: number, grip: number): number => {
   const k = effectiveKappa(t);
   const shape = HAIRPIN_FLOOR_RATIO + (1 - HAIRPIN_FLOOR_RATIO) * (1 - Math.pow(k, 0.85));
   const g = Math.max(0.12, grip);
-  return STRAIGHT_MAX_MPS * shape * Math.min(1.15, 0.55 + g * 0.6);
+  return CORNER_REF_MPS * shape * Math.min(1.15, 0.55 + g * 0.6);
+};
+
+/**
+ * Speed limit for a raw local curvature value. Opens smoothly to well above
+ * the straight ceiling as curvature vanishes, so there is no binary
+ * straight/corner flip in the target speed.
+ */
+const speedLimitFromKappa = (k: number, grip: number): number => {
+  const g = Math.max(0.12, grip);
+  const shape = HAIRPIN_FLOOR_RATIO + (1 - HAIRPIN_FLOOR_RATIO) * (1 - Math.pow(k, 0.85));
+  const cornerV = CORNER_REF_MPS * shape * Math.min(1.15, 0.55 + g * 0.6);
+  const raw = (KAPPA_OPEN_HI - k) / (KAPPA_OPEN_HI - KAPPA_OPEN_LO);
+  const o = Math.min(1, Math.max(0, raw));
+  const openness = o * o * (3 - 2 * o);
+  return cornerV + (STRAIGHT_CEILING_MPS * 1.6 - cornerV) * openness;
+};
+
+/**
+ * Max speed allowed *now* so every upcoming corner is reachable with planned
+ * braking: min over lookahead of sqrt(vCorner² + 2·aBrake·distance).
+ * Produces a smooth, early brake ramp instead of a target-speed cliff —
+ * the cliff was tripping lockup/spin thresholds every corner entry
+ * (slide → crawl → re-accelerate = caterpillar surging).
+ *
+ * Constraints are anchored to the fixed curvature-LUT grid, not to
+ * car-relative offsets: car-relative samples slide across an apex frame to
+ * frame and make the envelope flicker, which spikes brake demand into
+ * lockups at hairpins.
+ */
+export const brakingTargetMps = (t: number, grip: number): number => {
+  const lut = buildKappaLut();
+  const g = Math.max(0.12, grip);
+  const aPlan = MAX_BRAKE_MPS2 * g * BRAKE_PLAN_RATIO;
+  let allowed = speedLimitFromKappa(sampleKappa(t), grip);
+  const u = ((t % 1) + 1) % 1;
+  const x = u * LUT_SAMPLES;
+  const firstIdx = Math.ceil(x);
+  const metresPerSample = TRACK_LENGTH_M / LUT_SAMPLES;
+  const steps = Math.ceil(BRAKE_LOOKAHEAD_M / metresPerSample);
+  for (let j = 0; j <= steps; j += 1) {
+    const s = (firstIdx + j - x) * metresPerSample;
+    if (s <= 0) continue;
+    const v = speedLimitFromKappa(lut[(firstIdx + j) % LUT_SAMPLES], grip);
+    const cap = Math.sqrt(v * v + 2 * aPlan * s);
+    if (cap < allowed) allowed = cap;
+  }
+  return allowed;
 };
 
 export const progressRateToMps = (rate: number): number => rate * TRACK_LENGTH_M;
@@ -243,13 +335,13 @@ export const targetSpeedMps = (input: TargetSpeedInput): number => {
     input.engineMode,
   );
   const straight =
-    STRAIGHT_MAX_MPS *
+    STRAIGHT_CEILING_MPS *
     ENGINE_MULT[input.engineMode] *
     COMPOUND_BASE[input.compound] *
     grip *
     input.controlMult *
     input.drsMult;
-  const corner = cornerSpeedLimit(input.lapProgress, grip);
+  const corner = brakingTargetMps(input.lapProgress, grip);
   let target = Math.min(straight, corner);
   if (input.pitExitBlend < 1) {
     target *= input.pitExitScale(input.pitExitBlend);
@@ -342,7 +434,7 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
     incidentTimer = Math.max(0, incidentTimer - input.dt);
     const crawl =
       status === "spun"
-        ? STRAIGHT_MAX_MPS * 0.08
+        ? CORNER_REF_MPS * 0.08
         : Math.min(speed, input.targetMps) * 0.55;
     speed = Math.max(crawl, speed - MAX_BRAKE_MPS2 * grip * 0.35 * input.dt);
     if (status === "sliding") {
@@ -368,13 +460,13 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
   }
 
   const dt = Math.max(1e-4, input.dt);
-  const brakeLimit = MAX_BRAKE_MPS2 * grip;
-  const accelLimit = MAX_ACCEL_MPS2 * Math.min(1.1, grip + 0.15);
+  const brakeLimit = longitudinalBrakeMps2(speed, grip);
+  const accelLimit = longitudinalAccelMps2(speed, grip);
   const speedError = input.targetMps - speed;
 
   if (speedError < 0) {
     const speedShortfall = -speedError;
-    const brakeDemand = speedShortfall / BRAKE_HORIZON_S;
+    const brakeDemand = speedShortfall / BRAKE_RESPONSE_S;
     const ratio = brakeDemand / Math.max(1e-3, brakeLimit);
     brakeIntensity = Math.min(1, ratio);
     if (ratio > SPIN_BRAKE_RATIO) {
@@ -383,7 +475,7 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
       incidentTimer = SPIN_DURATION_S;
       damage = Math.min(100, damage + 8 + (ratio - SPIN_BRAKE_RATIO) * 12);
       extraWear += 10 * dt;
-      speed = Math.max(STRAIGHT_MAX_MPS * 0.1, speed - brakeLimit * dt);
+      speed = Math.max(CORNER_REF_MPS * 0.1, speed - brakeLimit * dt);
     } else if (ratio > SLIDE_BRAKE_RATIO) {
       status = "sliding";
       incidentKind = "lockup";
@@ -396,7 +488,7 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
       if (ratio > 0.92) extraWear += 1.5 * dt;
     }
   } else {
-    const accelWanted = speedError / BRAKE_HORIZON_S;
+    const accelWanted = speedError / ACCEL_RESPONSE_S;
     speed = Math.min(input.targetMps, speed + Math.min(accelWanted, accelLimit) * dt);
   }
 

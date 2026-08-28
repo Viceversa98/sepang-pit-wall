@@ -179,5 +179,4 @@ export const writeVehicleKinematicPose = (
   floats[base + VehicleField.velX] = 0;
   floats[base + VehicleField.velY] = 0;
   floats[base + VehicleField.velZ] = 0;
-  floats[base + VehicleField.speed] = 0;
 };

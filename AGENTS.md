@@ -12,11 +12,13 @@ Vite + Svelte + Three.js + Rapier multithreaded F1 race simulation.
 
 ## Commands
 
+Use **[nub](https://nubjs.com)** (not npm) — faster installs and script runs.
+
 ```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build
-npm run preview
+nub install
+nub run dev      # http://localhost:5173
+nub run build
+nub run preview
 ```
 
 ## Architecture

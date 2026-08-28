@@ -4,8 +4,8 @@ import {
   cornerWorld,
   MAIN_HALF,
   resolveCampusPlacements,
-} from "../lib/sepangCampusLayout.ts";
-import { getTrackCurve, metresToUnits } from "../lib/trackCurve.ts";
+} from "../src/lib/sepangCampusLayout.ts";
+import { getTrackCurve, metresToUnits } from "../src/lib/trackCurve.ts";
 
 const CLEAR_MIN = MAIN_HALF + metresToUnits(14);
 
@@ -31,6 +31,10 @@ console.log({
 });
 
 for (const p of placements) {
+  if (p.def.fixedWorld) {
+    console.log(p.id, `#${p.segmentIndex}`, "fixedWorld", "SKIP");
+    continue;
+  }
   const hx = p.size.x / 2;
   const hz = p.size.z / 2;
   const corners = [

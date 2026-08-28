@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { sampleCarPose, type CarWorldPose } from "@/lib/carPose";
+import { VEHICLE_FORWARD } from "@/lib/vehicleOrientation";
 import { metresToUnits } from "@/lib/trackCurve";
 import type { CameraMode, CarState, RacePhase } from "@/stores/raceStore";
 
@@ -30,7 +31,6 @@ export const createFollowCameraState = (): FollowCameraState => ({
   },
 });
 
-const _forward = new THREE.Vector3(0, 0, -1);
 const _tangent = new THREE.Vector3();
 
 /**
@@ -56,7 +56,7 @@ export const updateFollowCamera = (
 
   if (carGroup && phase === "racing" && !car.isBoxing) {
     position = carGroup.position;
-    _tangent.copy(_forward).applyQuaternion(carGroup.quaternion).normalize();
+    _tangent.copy(VEHICLE_FORWARD).applyQuaternion(carGroup.quaternion).normalize();
     tangent = _tangent;
   } else {
     const pose = sampleCarPose(car, phase, car.id, gridIndex, state.poseScratch);

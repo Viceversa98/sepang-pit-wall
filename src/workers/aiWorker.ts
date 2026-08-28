@@ -15,6 +15,7 @@ import {
   targetWaypointIndex,
   type Waypoint,
 } from "@/shared/waypoints";
+import { headingFromQuaternion } from "@/lib/vehicleOrientation";
 
 export type AiWorkerInit = {
   buffer: SharedArrayBuffer;
@@ -60,9 +61,6 @@ const normalizeAngle = (angle: number): number => {
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 };
-
-const headingFromQuaternion = (qx: number, qy: number, qz: number, qw: number): number =>
-  Math.atan2(2 * (qw * qy + qx * qz), 1 - 2 * (qy * qy + qz * qz));
 
 const steerToward = (
   px: number,

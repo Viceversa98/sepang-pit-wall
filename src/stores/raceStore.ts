@@ -390,14 +390,22 @@ export const resolveTargetMps = (
 
 const raceComplete = (car: CarState): boolean => car.finished || car.garageReturn;
 
-const buildStandings = (cars: CarState[], totalLaps: number): StandingsRow[] => {
+const isGridStandingsPhase = (phase: RacePhase): boolean =>
+  phase === "ready" || phase === "starting";
+
+const buildStandings = (
+  cars: CarState[],
+  totalLaps: number,
+  phase: RacePhase,
+): StandingsRow[] => {
+  const gridOrder = isGridStandingsPhase(phase);
   const sorted = [...cars].sort((a, b) => {
     const aDone = raceComplete(a);
     const bDone = raceComplete(b);
     if (aDone && bDone) return a.finishTimeMs - b.finishTimeMs;
     if (aDone) return -1;
     if (bDone) return 1;
-    return standingsDistance(b) - standingsDistance(a);
+    return standingsDistance(b, gridOrder) - standingsDistance(a, gridOrder);
   });
 
   const leader = sorted[0];
@@ -408,7 +416,9 @@ const buildStandings = (cars: CarState[], totalLaps: number): StandingsRow[] => 
         const gap = ((car.finishTimeMs - leader.finishTimeMs) / 1000).toFixed(2);
         gapLabel = `+${gap}s`;
       } else {
-        const gapM = (standingsDistance(leader) - standingsDistance(car)) * TRACK_LENGTH_M;
+        const gapM =
+          (standingsDistance(leader, gridOrder) - standingsDistance(car, gridOrder)) *
+          TRACK_LENGTH_M;
         if (gapM > TRACK_LENGTH_M * 0.95) {
           gapLabel = `+${Math.ceil(gapM / TRACK_LENGTH_M)} LAP`;
         } else {
@@ -558,7 +568,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   weather: null,
   weatherOverride: "auto",
   rainIntensity: 0.2,
-  standings: buildStandings(initialCars, TOTAL_LAPS),
+  standings: buildStandings(initialCars, TOTAL_LAPS, "landing"),
   winnerId: null,
   isRunning: false,
   startLightCount: 0,
@@ -588,6 +598,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   },
 
   beginRace: () => {
+    if (get().phase !== "ready") return;
     clearStartTimers();
     simElapsedMs = 0;
     uiSyncAccum = 0;
@@ -599,7 +610,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       phase: "starting",
       elapsedMs: 0,
       cars,
-      standings: buildStandings(cars, totalLaps),
+      standings: buildStandings(cars, totalLaps, "starting"),
       winnerId: null,
       startLightCount: 0,
       startLightsGreen: false,
@@ -608,8 +619,6 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       missionPaused: false,
       drsActive: false,
       blueFlagActive: false,
-      cameraMode: "overview",
-      overviewFollow: true,
       ...syncPlayerMirrors(cars),
       rainIntensity: resolveRainIntensity(get().weatherOverride, get().weather),
     });
@@ -657,7 +666,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       playMode: get().playMode === "mission" ? "mission" : "free",
       elapsedMs: 0,
       cars,
-      standings: buildStandings(cars, totalLaps),
+      standings: buildStandings(cars, totalLaps, "ready"),
       winnerId: null,
       startLightCount: 0,
       startLightsGreen: false,
@@ -704,6 +713,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       startLightsGreen: false,
       startLightsOut: true,
       raceControl: "green",
+      ...syncPlayerMirrors(get().cars),
     });
     const s = get();
     const player = s.cars.find((c) => c.isPlayer);
@@ -740,7 +750,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       totalLaps: TOTAL_LAPS,
       elapsedMs: 0,
       cars,
-      standings: buildStandings(cars, TOTAL_LAPS),
+      standings: buildStandings(cars, TOTAL_LAPS, "landing"),
       winnerId: null,
       startLightCount: 0,
       startLightsGreen: false,
@@ -767,7 +777,11 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
         // Stint compound change requires a box
         return { ...car, pendingCompound: compound, pendingBox: true };
       });
-      return { cars, ...syncPlayerMirrors(cars), standings: buildStandings(cars, state.totalLaps) };
+      return {
+        cars,
+        ...syncPlayerMirrors(cars),
+        standings: buildStandings(cars, state.totalLaps, state.phase),
+      };
     });
   },
 
@@ -818,7 +832,11 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
         const unsafe = isPitReleaseBlocked(state.cars, car);
         return beginPitExit(car, unsafe);
       });
-      return { cars, ...syncPlayerMirrors(cars), standings: buildStandings(cars, state.totalLaps) };
+      return {
+        cars,
+        ...syncPlayerMirrors(cars),
+        standings: buildStandings(cars, state.totalLaps, state.phase),
+      };
     });
   },
 
@@ -893,7 +911,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       phase: "ready",
       elapsedMs: 0,
       cars,
-      standings: buildStandings(cars, totalLaps),
+      standings: buildStandings(cars, totalLaps, "ready"),
       winnerId: null,
       startLightCount: 0,
       startLightsGreen: false,
@@ -973,7 +991,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       return {
         cars: withOne,
         ...syncPlayerMirrors(withOne),
-        standings: buildStandings(withOne, state.totalLaps),
+        standings: buildStandings(withOne, state.totalLaps, state.phase),
       };
     });
   },
@@ -1007,7 +1025,11 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
         }
         return beginPitExit(car, unsafe);
       });
-      return { cars, ...syncPlayerMirrors(cars), standings: buildStandings(cars, state.totalLaps) };
+      return {
+        cars,
+        ...syncPlayerMirrors(cars),
+        standings: buildStandings(cars, state.totalLaps, state.phase),
+      };
     });
   },
 
@@ -1270,7 +1292,7 @@ export const stepRaceSimulation = (dt: number): void => {
   if (syncUi) uiSyncAccum = 0;
 
   if (syncUi) {
-    const standings = buildStandings(cars, state.totalLaps);
+    const standings = buildStandings(cars, state.totalLaps, nextPhase);
     const winnerId = allDone ? standings[0]?.id ?? null : state.winnerId;
     const playerCar = cars.find((c) => c.isPlayer);
     const drsActive =

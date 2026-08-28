@@ -50,7 +50,7 @@ export const stepCarVisual = (
   const progressRate = Math.max(0, car.speedMps) / TRACK_LENGTH_M;
   let lapProgress = wrap01(visual.lapProgress + progressRate * dt);
   lapProgress = wrap01(
-    lapProgress + lapProgressDelta(lapProgress, car.lapProgress) * Math.min(1, 18 * dt),
+    lapProgress + lapProgressDelta(lapProgress, car.lapProgress) * Math.min(1, 32 * dt),
   );
 
   const laneOffsetM =

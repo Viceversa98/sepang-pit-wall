@@ -11,24 +11,31 @@
     });
   });
 
-  const visible = $derived(race.phase === "starting" || race.startLightsOut);
+  const visible = $derived(
+    (race.phase === "ready" || race.phase === "starting" || race.startLightsOut) &&
+      race.cameraMode !== "follow",
+  );
 
   const label = $derived(
-    race.startLightsOut
-      ? "LIGHTS OUT"
-      : race.startLightsGreen
-        ? "GO"
-        : race.startLightCount === 0
-          ? "GRID SET"
-          : `LIGHTS ${race.startLightCount}/${LAMP_COUNT}`,
+    race.phase === "ready"
+      ? "GRID READY"
+      : race.startLightsOut
+        ? "LIGHTS OUT"
+        : race.startLightsGreen
+          ? "GO"
+          : race.startLightCount === 0
+            ? "GRID SET"
+            : `LIGHTS ${race.startLightCount}/${LAMP_COUNT}`,
   );
 
   const labelClass = $derived(
-    race.startLightsOut
-      ? "text-amber-300"
-      : race.startLightsGreen
-        ? "text-emerald-300"
-        : "text-red-200",
+    race.phase === "ready"
+      ? "text-amber-200"
+      : race.startLightsOut
+        ? "text-amber-300"
+        : race.startLightsGreen
+          ? "text-emerald-300"
+          : "text-red-200",
   );
 </script>
 

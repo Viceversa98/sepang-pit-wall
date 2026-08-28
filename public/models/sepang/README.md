@@ -1,7 +1,33 @@
 # Sepang campus GLBs
 
-Drop hero building meshes here as `{buildingId}.glb` (e.g. `pit.glb`, `tower.glb`).
+Hero building meshes baked from procedural kits. Rebuild with:
 
-Building IDs match `CampusBuildingId` in `src/lib/sepangCampusLayout.ts`. Override paths in `CAMPUS_GLB` inside `src/lib/sepangCampusAssets.ts` when needed.
+```bash
+npm run campus:rebuild
+# or export only:
+npm run campus:export
+```
+
+## Building IDs (`CampusBuildingId`)
+
+| ID | Kit |
+|----|-----|
+| `pit` | pit garage |
+| `mainGrandstandNorth` | tiered main stand |
+| `mainGrandstandSouth` | tiered main stand |
+| `tower` | welcome / Petronas-inspired tower |
+| `twinTowers` | pit-exit twin spires |
+| `k1` | covered grandstand |
+| `grandstandF` | covered grandstand (T7–8) |
+| `welcome` | welcome center |
+| `medicalCenter` | medical block |
+| `controlPostWelcome` | entry control booth |
+| `paddockChalets` | paddock chalets |
+| `southPaddock` | south paddock |
+| `hillstandK2` | open hill (K2) |
+| `hillstandC2` | hill + canopy (C2) |
+| `motorsportPark` | workshop bays |
+
+Override paths in `CAMPUS_GLB` inside [`src/lib/sepangCampusAssets.ts`](../../src/lib/sepangCampusAssets.ts) when needed.
 
 When a file is missing, `SepangCampus` keeps the procedural kit for that placement.

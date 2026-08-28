@@ -18,7 +18,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const csvPath = path.join(root, "public", "tracks", "sepang-centerline.csv");
-const heightmapPath = path.join(root, "public", "terrain", "sepang-heightmap.json");
+const heightmapPath = path.join(root, "src", "data", "sepang-heightmap.json");
 const outDir = path.join(root, "public", "textures");
 const outImage = path.join(outDir, "sepang-ortho.webp");
 const outMeta = path.join(outDir, "sepang-ortho.meta.json");

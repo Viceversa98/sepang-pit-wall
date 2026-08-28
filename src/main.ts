@@ -20,7 +20,6 @@ const bootstrap = (): void => {
 
   const director = new RaceDirector();
   director.initVehicleFlags();
-  director.spawnWorkers();
 
   let frameId = 0;
   let lastTime = performance.now();

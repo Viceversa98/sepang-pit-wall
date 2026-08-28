@@ -5,13 +5,12 @@ import {
   loadCampusGltf,
   preloadCampusGlbs,
 } from "@/lib/sepangCampusAssets";
-import { LOD_DISTANCES, resolveCampusPlacements, type CampusPlacement } from "@/lib/sepangCampusLayout";
+import { resolveCampusPlacements, type CampusPlacement } from "@/lib/sepangCampusLayout";
 import { buildCampusKit } from "@/scene/campus/buildKit";
+import { buildOsmBackdrop, disposeOsmBackdrop } from "@/scene/campus/buildOsmBackdrop";
 
 type CampusEntry = {
   root: THREE.Group;
-  lod: "hero" | "mid" | "far";
-  anchor: THREE.Vector3;
 };
 
 export type SepangCampusHandle = {
@@ -19,8 +18,6 @@ export type SepangCampusHandle = {
   update: (camera: THREE.Camera) => void;
   dispose: () => void;
 };
-
-const lodThresholds = (lod: CampusEntry["lod"]): [number, number, number] => LOD_DISTANCES[lod];
 
 const disposeGroup = (group: THREE.Object3D): void => {
   group.traverse((obj) => {
@@ -60,6 +57,9 @@ export const createSepangCampus = (): SepangCampusHandle => {
   group.name = "sepang-campus";
   const entries: CampusEntry[] = [];
 
+  const backdrop = buildOsmBackdrop();
+  group.add(backdrop);
+
   const placements = resolveCampusPlacements();
   for (const placement of placements) {
     const root = new THREE.Group();
@@ -72,20 +72,13 @@ export const createSepangCampus = (): SepangCampusHandle => {
     group.add(root);
     void trySwapCampusGlb(placement, root, mesh);
 
-    entries.push({
-      root,
-      lod: placement.def.lod,
-      anchor: placement.position.clone(),
-    });
+    entries.push({ root });
   }
 
-  const update = (camera: THREE.Camera): void => {
-    const camPos = camera.position;
+  const update = (_camera: THREE.Camera): void => {
     for (const entry of entries) {
-      const dist = camPos.distanceTo(entry.anchor);
-      const [near, mid, far] = lodThresholds(entry.lod);
-      entry.root.visible = dist <= far;
-      entry.root.scale.setScalar(dist > mid ? 0.92 : dist > near ? 0.98 : 1);
+      entry.root.visible = true;
+      entry.root.scale.setScalar(1);
     }
   };
 
@@ -93,6 +86,7 @@ export const createSepangCampus = (): SepangCampusHandle => {
     for (const entry of entries) {
       disposeGroup(entry.root);
     }
+    disposeOsmBackdrop(backdrop);
     group.clear();
   };
 

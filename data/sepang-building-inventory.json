@@ -1,0 +1,765 @@
+{
+  "generatedAt": "2026-08-28T12:36:13.135Z",
+  "source": "align-sepang-osm.mjs",
+  "heroes": {
+    "grandstandF": {
+      "osmId": 107364038,
+      "name": "F Grandstand",
+      "t": 0.4357142857142857,
+      "bank": 1,
+      "distM": 135.35351235895482
+    },
+    "welcome": {
+      "osmId": 107364040,
+      "name": "Welcome Center",
+      "t": 0.08928571428571429,
+      "bank": 1,
+      "distM": 55.02001277314404
+    },
+    "k1": {
+      "osmId": 107364100,
+      "name": "K1 Grandstand",
+      "t": 0.10714285714285714,
+      "bank": 1,
+      "distM": 26.933623169551865
+    },
+    "mainGrandstandNorth": {
+      "osmId": 144247993,
+      "name": "Main Grandstand",
+      "t": 0.8571428571428571,
+      "bank": 1,
+      "distM": 44.317441280880665
+    },
+    "medicalCenter": {
+      "osmId": 144359492,
+      "name": "Medical Center",
+      "t": 0.9464285714285714,
+      "bank": -1,
+      "distM": 50.039440379749145
+    },
+    "pit": {
+      "osmId": 144362327,
+      "name": "Paddock/Pit Building",
+      "t": 0.9857142857142858,
+      "bank": -1,
+      "distM": 50.94324878133275
+    },
+    "controlPostWelcome": {
+      "osmId": 144529864,
+      "name": "Control Post Welcome Center",
+      "t": 0.08928571428571429,
+      "bank": 1,
+      "distM": 134.76098858150874
+    },
+    "southPaddock": {
+      "osmId": 1105232836,
+      "name": "South Padock",
+      "t": 0.825,
+      "bank": -1,
+      "distM": 30.419362243196083
+    },
+    "hillstandC2": {
+      "osmId": null,
+      "name": "Hillstand C2 (inferred)",
+      "t": 0.48928571428571427,
+      "bank": 1,
+      "areaM2": 144,
+      "bboxM": {
+        "widthM": 55,
+        "depthM": 120
+      },
+      "distM": 105.0196677004742
+    }
+  },
+  "entries": [
+    {
+      "osmId": 107364038,
+      "name": "F Grandstand",
+      "heroId": "grandstandF",
+      "kit": "covered",
+      "trackT": 0.4357142857142857,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6.4,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 107364040,
+      "name": "Welcome Center",
+      "heroId": "welcome",
+      "kit": "welcome",
+      "trackT": 0.08928571428571429,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 107364092,
+      "name": "yes",
+      "heroId": "osm:107364092",
+      "kit": "support",
+      "trackT": 0.025,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 107364100,
+      "name": "K1 Grandstand",
+      "heroId": "k1",
+      "kit": "covered",
+      "trackT": 0.10714285714285714,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6.4,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144247993,
+      "name": "Main Grandstand",
+      "heroId": "mainGrandstandNorth",
+      "kit": "covered",
+      "trackT": 0.8571428571428571,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144359492,
+      "name": "Medical Center",
+      "heroId": "medicalCenter",
+      "kit": "medical",
+      "trackT": 0.9464285714285714,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144362327,
+      "name": "Paddock/Pit Building",
+      "heroId": "pit",
+      "kit": "pit",
+      "trackT": 0.9857142857142858,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 9.600000000000001,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144362328,
+      "name": "yes",
+      "heroId": "osm:144362328",
+      "kit": "support",
+      "trackT": 0.010714285714285714,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144362332,
+      "name": "yes",
+      "heroId": "osm:144362332",
+      "kit": "support",
+      "trackT": 0.30714285714285716,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144362333,
+      "name": "yes",
+      "heroId": "osm:144362333",
+      "kit": "support",
+      "trackT": 0.3142857142857143,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144367529,
+      "name": "yes",
+      "heroId": "osm:144367529",
+      "kit": "support",
+      "trackT": 0.3678571428571429,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144367532,
+      "name": "yes",
+      "heroId": "osm:144367532",
+      "kit": "support",
+      "trackT": 0.37857142857142856,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144367534,
+      "name": "yes",
+      "heroId": "osm:144367534",
+      "kit": "support",
+      "trackT": 0.3821428571428571,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144367536,
+      "name": "yes",
+      "heroId": "osm:144367536",
+      "kit": "support",
+      "trackT": 0.37142857142857144,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144367542,
+      "name": "yes",
+      "heroId": "osm:144367542",
+      "kit": "support",
+      "trackT": 0.36428571428571427,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144529851,
+      "name": "yes",
+      "heroId": "osm:144529851",
+      "kit": "support",
+      "trackT": 0.15,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144529859,
+      "name": "yes",
+      "heroId": "osm:144529859",
+      "kit": "support",
+      "trackT": 0.15714285714285714,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144529864,
+      "name": "Control Post Welcome Center",
+      "heroId": "controlPostWelcome",
+      "kit": "welcome",
+      "trackT": 0.08928571428571429,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144529866,
+      "name": "yes",
+      "heroId": "osm:144529866",
+      "kit": "support",
+      "trackT": 0.14642857142857144,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144532107,
+      "name": "yes",
+      "heroId": "osm:144532107",
+      "kit": "support",
+      "trackT": 0.30357142857142855,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144533525,
+      "name": "yes",
+      "heroId": "osm:144533525",
+      "kit": "support",
+      "trackT": 0.43214285714285716,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144533526,
+      "name": "yes",
+      "heroId": "osm:144533526",
+      "kit": "support",
+      "trackT": 0.4392857142857143,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144536775,
+      "name": "yes",
+      "heroId": "osm:144536775",
+      "kit": "support",
+      "trackT": 0.7357142857142858,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144536776,
+      "name": "yes",
+      "heroId": "osm:144536776",
+      "kit": "support",
+      "trackT": 0.6571428571428571,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144536777,
+      "name": "yes",
+      "heroId": "osm:144536777",
+      "kit": "support",
+      "trackT": 0.7142857142857143,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144536780,
+      "name": "yes",
+      "heroId": "osm:144536780",
+      "kit": "support",
+      "trackT": 0.6535714285714286,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 144536782,
+      "name": "yes",
+      "heroId": "osm:144536782",
+      "kit": "support",
+      "trackT": 0.7,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232836,
+      "name": "South Padock",
+      "heroId": "southPaddock",
+      "kit": "southPaddock",
+      "trackT": 0.825,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6.4,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232837,
+      "name": "yes",
+      "heroId": "osm:1105232837",
+      "kit": "support",
+      "trackT": 0.825,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232838,
+      "name": "yes",
+      "heroId": "osm:1105232838",
+      "kit": "support",
+      "trackT": 0.44642857142857145,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232839,
+      "name": "yes",
+      "heroId": "osm:1105232839",
+      "kit": "support",
+      "trackT": 0.4607142857142857,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232840,
+      "name": "yes",
+      "heroId": "osm:1105232840",
+      "kit": "support",
+      "trackT": 0.46785714285714286,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232841,
+      "name": "yes",
+      "heroId": "osm:1105232841",
+      "kit": "support",
+      "trackT": 0.48928571428571427,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232842,
+      "name": "yes",
+      "heroId": "osm:1105232842",
+      "kit": "support",
+      "trackT": 0.48928571428571427,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232843,
+      "name": "yes",
+      "heroId": "osm:1105232843",
+      "kit": "support",
+      "trackT": 0.5892857142857143,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232844,
+      "name": "yes",
+      "heroId": "osm:1105232844",
+      "kit": "support",
+      "trackT": 0.6035714285714285,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232845,
+      "name": "yes",
+      "heroId": "osm:1105232845",
+      "kit": "support",
+      "trackT": 0.6107142857142858,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232846,
+      "name": "yes",
+      "heroId": "osm:1105232846",
+      "kit": "support",
+      "trackT": 0.6214285714285714,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1105232847,
+      "name": "yes",
+      "heroId": "osm:1105232847",
+      "kit": "support",
+      "trackT": 0.7357142857142858,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524879,
+      "name": "yes",
+      "heroId": "osm:1106524879",
+      "kit": "support",
+      "trackT": 0.007142857142857143,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524880,
+      "name": "yes",
+      "heroId": "osm:1106524880",
+      "kit": "support",
+      "trackT": 0.0035714285714285713,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524881,
+      "name": "yes",
+      "heroId": "osm:1106524881",
+      "kit": "support",
+      "trackT": 0.9964285714285714,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524882,
+      "name": "yes",
+      "heroId": "osm:1106524882",
+      "kit": "support",
+      "trackT": 0.32857142857142857,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524883,
+      "name": "yes",
+      "heroId": "osm:1106524883",
+      "kit": "support",
+      "trackT": 0.325,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524884,
+      "name": "yes",
+      "heroId": "osm:1106524884",
+      "kit": "support",
+      "trackT": 0.325,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106524885,
+      "name": "yes",
+      "heroId": "osm:1106524885",
+      "kit": "support",
+      "trackT": 0.33214285714285713,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106756634,
+      "name": "Welcome Center",
+      "heroId": "welcome",
+      "kit": "welcome",
+      "trackT": 0.08928571428571429,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106762509,
+      "name": "yes",
+      "heroId": "osm:1106762509",
+      "kit": "support",
+      "trackT": 0.08928571428571429,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1106762513,
+      "name": "yes",
+      "heroId": "osm:1106762513",
+      "kit": "support",
+      "trackT": 0.7392857142857143,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1315275026,
+      "name": "yes",
+      "heroId": "osm:1315275026",
+      "kit": "support",
+      "trackT": 0.4035714285714286,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1315275028,
+      "name": "yes",
+      "heroId": "osm:1315275028",
+      "kit": "support",
+      "trackT": 0.42142857142857143,
+      "bank": 1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1330601072,
+      "name": "yes",
+      "heroId": "osm:1330601072",
+      "kit": "support",
+      "trackT": 0.32142857142857145,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    },
+    {
+      "osmId": 1330601073,
+      "name": "yes",
+      "heroId": "osm:1330601073",
+      "kit": "support",
+      "trackT": 0.20714285714285716,
+      "bank": -1,
+      "sizeM": {
+        "x": 12,
+        "y": 6,
+        "z": 12
+      }
+    }
+  ]
+}

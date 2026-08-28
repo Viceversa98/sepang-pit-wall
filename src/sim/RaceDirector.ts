@@ -1,5 +1,5 @@
-import * as THREE from "three";
 import { sampleCarPose } from "@/lib/carPose";
+import { quatFromTangent } from "@/lib/vehicleOrientation";
 import { buildTrackCollider } from "@/scene/buildTrackCollider";
 import { SEPANG_WAYPOINTS } from "@/shared/sepangWaypoints";
 import {
@@ -24,9 +24,6 @@ import {
 
 const FIXED_TIMESTEP = 1 / 60;
 
-const _forward = new THREE.Vector3(0, 0, -1);
-const _quat = new THREE.Quaternion();
-
 export type WorkerHandles = {
   physicsWorker: Worker;
   aiWorker: Worker;
@@ -41,10 +38,10 @@ const poseToInit = (
   gridIndex: number,
 ): VehiclePoseInit => {
   const pose = sampleCarPose(car, phase, car.id, gridIndex);
-  _quat.setFromUnitVectors(_forward, pose.tangent.clone().normalize());
+  const quat = quatFromTangent(pose.tangent);
   return {
     position: [pose.position.x, pose.position.y, pose.position.z],
-    quaternion: [_quat.x, _quat.y, _quat.z, _quat.w],
+    quaternion: [quat.x, quat.y, quat.z, quat.w],
     kinematic: isPhysicsKinematic(phase, car),
   };
 };
@@ -58,6 +55,13 @@ export class RaceDirector {
   constructor() {
     this.shared = createSharedSimState();
     Atomics.store(this.shared.header, HeaderIndex.vehicleCount, FIELD_META.length);
+  }
+
+  /** Lazily spawn Rapier workers when leaving landing (defers ~2.8 MB WASM until race desk). */
+  ensureWorkers(): WorkerHandles | null {
+    const state = useRaceStore.getState();
+    if (state.phase === "landing") return null;
+    return this.spawnWorkers();
   }
 
   spawnWorkers(): WorkerHandles {
@@ -116,7 +120,7 @@ export class RaceDirector {
       const base = vehicleBaseIndex(index);
       floats[base + VehicleField.flags] = vehicleFlagsEncode({
         onGround: true,
-        aiEnabled: !meta.isPlayer,
+        aiEnabled: false,
         playerControlled: meta.isPlayer,
         kinematic: true,
       });
@@ -143,6 +147,9 @@ export class RaceDirector {
   /** Main-thread sim tick + SAB driver input sync for render/workers. */
   tick(dt: number): void {
     const state = useRaceStore.getState();
+    if (state.phase !== "landing") {
+      this.ensureWorkers();
+    }
     if (state.phase === "racing" && this.lastPhase !== "racing") {
       this.resetPhysicsPoses();
     }
@@ -175,12 +182,12 @@ export class RaceDirector {
       });
 
       const pose = sampleCarPose(car, state.phase, car.id, index);
-      _quat.setFromUnitVectors(_forward, pose.tangent.clone().normalize());
+      const quat = quatFromTangent(pose.tangent);
       writeVehicleKinematicPose(
         floats,
         index,
         [pose.position.x, pose.position.y, pose.position.z],
-        [_quat.x, _quat.y, _quat.z, _quat.w],
+        [quat.x, quat.y, quat.z, quat.w],
       );
       floats[base + VehicleField.speed] = Math.max(0, car.speedMps);
     });
