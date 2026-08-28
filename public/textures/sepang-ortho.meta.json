@@ -1,0 +1,25 @@
+{
+  "source": "Esri World Imagery",
+  "attribution": "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+  "zoom": 16,
+  "boundsWorld": {
+    "minX": -319.4283993700523,
+    "maxX": 318.6975032445182,
+    "minZ": -343.2769054520634,
+    "maxZ": 344.5751044287226
+  },
+  "boundsLatLng": {
+    "minLat": 2.7481192619766963,
+    "maxLat": 2.773197123534701,
+    "minLng": 101.723635559388,
+    "maxLng": 101.75020081241419
+  },
+  "tileRange": {
+    "x0": 51286,
+    "y0": 32262,
+    "x1": 51291,
+    "y1": 32267
+  },
+  "imageSize": 2048,
+  "bakedAt": "2026-08-28T12:12:58.620Z"
+}

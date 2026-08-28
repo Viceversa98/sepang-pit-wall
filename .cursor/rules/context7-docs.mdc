@@ -1,0 +1,17 @@
+---
+description: Always use Context7 MCP for current library/framework docs before coding against APIs
+alwaysApply: true
+---
+
+# Context7 — latest docs first
+
+Before writing or changing code that depends on a library, framework, SDK, or CLI API:
+
+1. Use Context7 MCP (`resolve-library-id` → `query-docs`) for that library.
+2. Prefer project MCP server `context7` (also available as user Context7).
+3. Trust Context7 over training memory for APIs, props, migration notes, and examples.
+4. Especially required for: Next.js, React, Three.js / R3F / Drei, HeroUI, Tailwind, Zustand.
+
+Do not invent deprecated props or old HeroUI v2 / Next patterns when Context7 shows current usage.
+
+Optional API key: set `CONTEXT7_API_KEY` in the environment (see `.cursor/mcp.json`). Free tier works without a key for many queries via the connected user Context7 server.

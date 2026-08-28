@@ -1,0 +1,851 @@
+{
+  "source": "sepangCampusLayout + OSM Overpass",
+  "origin": {
+    "lat": 2.76056,
+    "lng": 101.7375
+  },
+  "bbox": [
+    2.745,
+    101.72,
+    2.775,
+    101.755
+  ],
+  "layout": [
+    {
+      "id": "pit",
+      "t": 0.018,
+      "bank": -1,
+      "sizeM": {
+        "x": 24,
+        "y": 14,
+        "z": 264
+      },
+      "lateralClearanceM": 22,
+      "includePit": true
+    },
+    {
+      "id": "mainGrandstandNorth",
+      "t": 0.012,
+      "bank": 1,
+      "sizeM": {
+        "x": 28,
+        "y": 16,
+        "z": 520
+      },
+      "lateralClearanceM": 24
+    },
+    {
+      "id": "mainGrandstandSouth",
+      "t": 0.935,
+      "bank": 1,
+      "sizeM": {
+        "x": 26,
+        "y": 16,
+        "z": 420
+      },
+      "lateralClearanceM": 34
+    },
+    {
+      "id": "tower",
+      "t": 0.986,
+      "bank": 1,
+      "sizeM": {
+        "x": 42,
+        "y": 28,
+        "z": 48
+      },
+      "lateralClearanceM": 26
+    },
+    {
+      "id": "twinTowers",
+      "t": 0.0547,
+      "bank": 1,
+      "sizeM": {
+        "x": 22,
+        "y": 36,
+        "z": 36
+      },
+      "lateralClearanceM": 26
+    },
+    {
+      "id": "k1",
+      "t": 0.0887,
+      "bank": 1,
+      "sizeM": {
+        "x": 22,
+        "y": 14,
+        "z": 110
+      },
+      "lateralClearanceM": 22
+    },
+    {
+      "id": "grandstandF",
+      "t": 0.988,
+      "bank": -1,
+      "sizeM": {
+        "x": 24,
+        "y": 12,
+        "z": 140
+      },
+      "lateralClearanceM": 28
+    },
+    {
+      "id": "welcome",
+      "t": 0.995,
+      "bank": 1,
+      "sizeM": {
+        "x": 36,
+        "y": 12,
+        "z": 48
+      },
+      "lateralClearanceM": 62
+    },
+    {
+      "id": "paddockChalets",
+      "t": 0.02,
+      "bank": -1,
+      "sizeM": {
+        "x": 42,
+        "y": 8,
+        "z": 96
+      },
+      "lateralClearanceM": 58,
+      "includePit": true
+    },
+    {
+      "id": "southPaddock",
+      "t": 0.875,
+      "bank": -1,
+      "sizeM": {
+        "x": 28,
+        "y": 10,
+        "z": 96
+      },
+      "lateralClearanceM": 28
+    },
+    {
+      "id": "hillstandK2",
+      "t": 0.31,
+      "bank": 1,
+      "sizeM": {
+        "x": 40,
+        "y": 8,
+        "z": 180
+      },
+      "lateralClearanceM": 36
+    },
+    {
+      "id": "motorsportPark",
+      "t": 0.44,
+      "bank": -1,
+      "sizeM": {
+        "x": 80,
+        "y": 8,
+        "z": 180
+      },
+      "lateralClearanceM": 95
+    }
+  ],
+  "osm": {
+    "fetchedAt": "2026-08-27T16:21:46.141Z",
+    "query": "way[building] out center 80",
+    "buildings": [
+      {
+        "osmId": 107364038,
+        "type": "way",
+        "name": "F Grandstand",
+        "levels": 2,
+        "heightM": null,
+        "centroid": {
+          "eastM": 605.1893740118959,
+          "northM": 94.4011599999901
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 107364040,
+        "type": "way",
+        "name": "Welcome Center",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -641.1707221105353,
+          "northM": -102.39320199996833
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 107364078,
+        "type": "way",
+        "name": "roof",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 208.1603268700283,
+          "northM": -360.0066719999943
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 107364092,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -277.4766816425982,
+          "northM": 35.94760800002736
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 107364100,
+        "type": "way",
+        "name": "K1 Grandstand",
+        "levels": 2,
+        "heightM": null,
+        "centroid": {
+          "eastM": -603.4436781980642,
+          "northM": 44.691322000002664
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144247993,
+        "type": "way",
+        "name": "Main Grandstand",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 100.01613910590405,
+          "northM": -45.774613999996994
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144359492,
+        "type": "way",
+        "name": "Medical Center",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 164.09540644013893,
+          "northM": 60.56486599999276
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144362327,
+        "type": "way",
+        "name": "Paddock/Pit Building",
+        "levels": 3,
+        "heightM": null,
+        "centroid": {
+          "eastM": -60.143112441609034,
+          "northM": 42.46946800000627
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144362328,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -204.59110167253704,
+          "northM": 80.18571599998631
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144362332,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 14.521520586721492,
+          "northM": 266.799344000014
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144362333,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -41.56312706704373,
+          "northM": 199.579970000014
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144367529,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 153.665707887279,
+          "northM": 399.8010720000096
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144367532,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 350.86262028712457,
+          "northM": 423.8103599999882
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144367534,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 408.14812875486615,
+          "northM": 399.6463160000174
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144367536,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 249.13414261340657,
+          "northM": 339.9878780000139
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144367542,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 144.14777402624884,
+          "northM": 366.39588399999394
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144529851,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -621.7901628599858,
+          "northM": 163.87555000003042
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144529859,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -619.5107511288313,
+          "northM": 215.61932400002726
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144529864,
+        "type": "way",
+        "name": "Control Post Welcome Center",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -728.7446088910863,
+          "northM": -136.42846799998364
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144529866,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -631.4860020257369,
+          "northM": 136.84852000003255
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144532107,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -163.52833327679835,
+          "northM": 240.82244400001565
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144533525,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 614.2069492000409,
+          "northM": 136.39530599998884
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144533526,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 662.5415969700928,
+          "northM": 75.21141600002736
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144536775,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -550.4834924784079,
+          "northM": -237.72732399997574
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144536776,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -206.38127381175894,
+          "northM": -356.63520199996486
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144536777,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -476.5304806721211,
+          "northM": -358.5807059999717
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144536780,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -167.84253694235105,
+          "northM": -343.6799140000096
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 144536782,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -345.20300774573224,
+          "northM": -406.5440119999703
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232836,
+        "type": "way",
+        "name": "South Padock",
+        "levels": 2,
+        "heightM": null,
+        "centroid": {
+          "eastM": -72.25179231784529,
+          "northM": -151.73825800001276
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232837,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -65.91391579884693,
+          "northM": -178.4557759999772
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232838,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 712.1994154524992,
+          "northM": -125.00968599996824
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232839,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 521.8852145699274,
+          "northM": -216.60312999998806
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232840,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 430.7532216728376,
+          "northM": -197.25862999998404
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232841,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 315.9709421866159,
+          "northM": -226.64016200000668
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232842,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 321.96412717554495,
+          "northM": -288.0340779999681
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232843,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 302.31670996633403,
+          "northM": -414.12705599997975
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232844,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 219.0903840957734,
+          "northM": -526.2256699999695
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232845,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 82.82603893256852,
+          "northM": -563.7540000000115
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232846,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -17.990674049319715,
+          "northM": -461.41606800000187
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1105232847,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -539.6090306605856,
+          "northM": -235.07436399999762
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524879,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -182.3974147735102,
+          "northM": 81.788546000014
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524880,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -155.5114754344237,
+          "northM": 83.68983399999503
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524881,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -128.08070109548171,
+          "northM": 86.06644400003269
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524882,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 18.680057109458357,
+          "northM": 96.64512199999939
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524883,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -8.750717229483591,
+          "northM": 94.26851200001083
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524884,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -35.64777564952262,
+          "northM": 92.36722400002978
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106524885,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 40.72919594662188,
+          "northM": 97.91633200002981
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106756634,
+        "type": "way",
+        "name": "Welcome Center",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -634.9996318153053,
+          "northM": -143.73516200000353
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106756635,
+        "type": "way",
+        "name": "roof",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -638.2464036462125,
+          "northM": -122.90942599996922
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106762509,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -745.0896588614673,
+          "northM": -181.18611399997596
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1106762513,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -616.0860739916232,
+          "northM": -188.4375379999881
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1315275026,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 778.7471189035621,
+          "northM": 489.32741800002515
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1315275028,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": 827.9712932035387,
+          "northM": 390.3720100000268
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1330598273,
+        "type": "way",
+        "name": "roof",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -632.9870780428122,
+          "northM": 188.66967200000093
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1330598275,
+        "type": "way",
+        "name": "roof",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -637.0121855877984,
+          "northM": 163.95292800000198
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1330598301,
+        "type": "way",
+        "name": "roof",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -697.3332033357085,
+          "northM": -68.29161200001246
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1330601072,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -4.3142036655527,
+          "northM": 171.29278400001667
+        },
+        "vertexCount": 1
+      },
+      {
+        "osmId": 1330601073,
+        "type": "way",
+        "name": "yes",
+        "levels": null,
+        "heightM": null,
+        "centroid": {
+          "eastM": -331.84899072854944,
+          "northM": 234.06845000002392
+        },
+        "vertexCount": 1
+      }
+    ]
+  }
+}

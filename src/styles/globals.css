@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --background: #070b14;
+  --foreground: #f1f5f9;
+  --pw-panel: #0b1220;
+  --pw-panel-elevated: #111827;
+  --pw-amber: #f59e0b;
+  --pw-cyan: #22d3ee;
+  --pw-rose: #fb7185;
+  --pw-line: rgba(245, 158, 11, 0.18);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.pit-panel {
+  background:
+    linear-gradient(180deg, rgba(245, 158, 11, 0.04), transparent 28%),
+    var(--pw-panel);
+}
+
+@keyframes podium-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes podium-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes podium-step-rise {
+  from {
+    transform: scaleY(0);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes podium-driver-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.podium-overlay {
+  animation: podium-fade-in 0.45s ease-out both;
+}
+
+.podium-card {
+  animation: podium-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+.podium-step {
+  transform-origin: bottom center;
+  animation: podium-step-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.podium-driver {
+  animation: podium-driver-in 0.5s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .podium-overlay,
+  .podium-card,
+  .podium-step,
+  .podium-driver {
+    animation: none;
+  }
+}

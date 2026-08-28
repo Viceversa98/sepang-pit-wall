@@ -1,0 +1,25 @@
+---
+description: Gortex code intelligence — prefer graph tools over file reads
+alwaysApply: true
+---
+
+<!-- gortex:communities:start -->
+<!-- gortex:skills:start -->
+## Community Skills
+
+| Area | Description | Skill |
+|------|-------------|-------|
+| 1 Dirs Telemetrydashboard | 27 symbols | `/gortex-1-dirs-telemetrydashboard` |
+| Components 3 Dirs | 27 symbols | `/gortex-components-3-dirs` |
+| Race 2 Dirs | 26 symbols | `/gortex-race-2-dirs` |
+| 2 Dirs | 20 symbols | `/gortex-2-dirs` |
+| 1 Dirs Tick | 13 symbols | `/gortex-1-dirs-tick` |
+| Race 1 Dirs | 12 symbols | `/gortex-race-1-dirs` |
+| Components 1 Dirs Racestore | 10 symbols | `/gortex-components-1-dirs-racestore` |
+| Store Basespeedfor | 7 symbols | `/gortex-store-basespeedfor` |
+| Components 1 Dirs Resolverainintensity | 7 symbols | `/gortex-components-1-dirs-resolverainintensity` |
+| Store Useracestore Setweatheroverride | 3 symbols | `/gortex-store-useracestore-setweatheroverride` |
+| Lib | 3 symbols | `/gortex-lib` |
+<!-- gortex:skills:end -->
+
+<!-- gortex:communities:end -->

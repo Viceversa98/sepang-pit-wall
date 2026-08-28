@@ -1,0 +1,63 @@
+<script lang="ts">
+  import { useRaceStore } from "@/stores/raceStore";
+
+  const LAMP_COUNT = 5;
+
+  let race = $state(useRaceStore.getState());
+
+  $effect(() => {
+    return useRaceStore.subscribe((s) => {
+      race = s;
+    });
+  });
+
+  const visible = $derived(race.phase === "starting" || race.startLightsOut);
+
+  const label = $derived(
+    race.startLightsOut
+      ? "LIGHTS OUT"
+      : race.startLightsGreen
+        ? "GO"
+        : race.startLightCount === 0
+          ? "GRID SET"
+          : `LIGHTS ${race.startLightCount}/${LAMP_COUNT}`,
+  );
+
+  const labelClass = $derived(
+    race.startLightsOut
+      ? "text-amber-300"
+      : race.startLightsGreen
+        ? "text-emerald-300"
+        : "text-red-200",
+  );
+</script>
+
+{#if visible}
+  <div
+    class="pointer-events-none absolute inset-x-0 top-[18%] z-20 flex flex-col items-center gap-4"
+    role="status"
+    aria-live="polite"
+    aria-label={label}
+  >
+    <div
+      class="flex items-center gap-3 rounded-md border border-white/15 bg-black/70 px-5 py-4 shadow-lg backdrop-blur-md md:gap-4 md:px-8 md:py-5"
+    >
+      {#each Array.from({ length: LAMP_COUNT }, (_, i) => i) as i (i)}
+        {@const redOn =
+          race.phase === "starting" && !race.startLightsGreen && i < race.startLightCount}
+        {@const greenOn = race.phase === "starting" && race.startLightsGreen}
+        {@const lit = redOn || greenOn}
+        {@const color = greenOn ? "bg-emerald-400" : lit ? "bg-red-500" : "bg-slate-800"}
+        {@const glow = greenOn
+          ? "shadow-[0_0_28px_rgba(52,211,153,0.95)]"
+          : lit
+            ? "shadow-[0_0_28px_rgba(239,68,68,0.95)]"
+            : "shadow-inner"}
+        <div class="h-11 w-11 rounded-full border border-white/20 md:h-14 md:w-14 {color} {glow}"></div>
+      {/each}
+    </div>
+    <p class="font-display text-2xl tracking-[0.35em] md:text-3xl {labelClass}">
+      {label}
+    </p>
+  </div>
+{/if}
