@@ -8,10 +8,18 @@
     type TyreCompound,
   } from "@/stores/raceStore";
   import { unlockRaceAudioFromGesture } from "@/lib/raceAudio";
+  import {
+    getRaceLayoutMode,
+    isMobileRaceLayout,
+    subscribeRaceLayoutMode,
+    type RaceLayoutMode,
+  } from "@/lib/viewportLayout";
   import { useAcademyStore } from "@/stores/academyStore";
   import CarShowroom from "@/ui/CarShowroom.svelte";
   import AuthorChatBubble from "@/ui/brand/AuthorChatBubble.svelte";
   import Logo from "@/ui/brand/Logo.svelte";
+  import { ENGINE_SEGMENTS, COMPOUND_SEGMENTS } from "@/ui/race/strategySegments";
+  import StrategySegmentGroup from "@/ui/race/StrategySegmentGroup.svelte";
   import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
 
   const ENGINE_COPY: Record<EngineMode, string> = {
@@ -31,12 +39,18 @@
   const selectClass = pwSelectClass();
 
   let race = $state(useRaceStore.getState());
+  let layoutMode = $state<RaceLayoutMode>(getRaceLayoutMode());
+  const mobileLayout = $derived(isMobileRaceLayout(layoutMode));
 
   $effect(() => {
     return useRaceStore.subscribe((s) => {
       race = s;
     });
   });
+
+  $effect(() => subscribeRaceLayoutMode((mode) => {
+    layoutMode = mode;
+  }));
 
   $effect(() => {
     useAcademyStore.getState().hydrate();
@@ -60,6 +74,14 @@
   const handleEnterRace = () => {
     unlockRaceAudioFromGesture();
     useRaceStore.getState().enterRaceDesk();
+  };
+
+  const handleEngineSelect = (value: EngineMode) => {
+    useRaceStore.getState().setEngineMode(value);
+  };
+
+  const handleCompoundSelect = (value: TyreCompound) => {
+    useRaceStore.getState().setCompound(value);
   };
 
   const handleEngineChange = (e: Event) => {
@@ -172,10 +194,18 @@
       </section>
 
       <section aria-label="Starting stint" class="grid gap-4 sm:grid-cols-2">
-        <label class="block space-y-1.5">
+        <div class="block space-y-1.5">
           <span class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
             Engine
           </span>
+          {#if mobileLayout}
+            <StrategySegmentGroup
+              label=""
+              value={race.engineMode}
+              options={ENGINE_SEGMENTS}
+              onSelect={handleEngineSelect}
+            />
+          {:else}
           <select
             id="setup-engine-mode"
             name="engineMode"
@@ -188,12 +218,21 @@
             <option value="standard">Standard</option>
             <option value="save">Save</option>
           </select>
+          {/if}
           <p class="text-[11px] text-slate-500">{ENGINE_COPY[race.engineMode]}</p>
-        </label>
-        <label class="block space-y-1.5">
+        </div>
+        <div class="block space-y-1.5">
           <span class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
             Compound
           </span>
+          {#if mobileLayout}
+            <StrategySegmentGroup
+              label=""
+              value={race.currentCompound}
+              options={COMPOUND_SEGMENTS}
+              onSelect={handleCompoundSelect}
+            />
+          {:else}
           <select
             id="setup-compound"
             name="currentCompound"
@@ -208,8 +247,9 @@
             <option value="intermediate">Intermediate</option>
             <option value="wet">Wet</option>
           </select>
+          {/if}
           <p class="text-[11px] text-slate-500">{COMPOUND_COPY[race.currentCompound]}</p>
-        </label>
+        </div>
       </section>
 
       <section aria-label="Race distance">

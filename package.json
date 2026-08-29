@@ -13,11 +13,11 @@
     "terrain:sample": "node scripts/sample-sepang.cjs",
     "terrain:ortho": "node scripts/bake-sepang-ortho.mjs",
     "terrain:rebuild": "nub run terrain:fetch && nub run terrain:sample && nub run terrain:ortho",
-    "assets:build": "node scripts/build-pit-crew-glb.mjs && node scripts/build-campus-glbs.mjs && nub x tsx --tsconfig tsconfig.json scripts/build-campus-env-glb.ts",
+    "assets:build": "node scripts/build-pit-crew-glb.mjs && node scripts/build-campus-glbs.mjs && nub x tsx --tsconfig tsconfig.json scripts/build-campus-env-glb.ts && node scripts/compress-campus-env.mjs",
     "assets:car": "node scripts/build-academy-car-glb.mjs",
     "campus:fetch": "node scripts/fetch-sepang-osm.mjs",
     "campus:align": "node scripts/align-sepang-osm.mjs",
-    "campus:export": "node scripts/build-campus-glbs.mjs && nub x tsx --tsconfig tsconfig.json scripts/build-campus-env-glb.ts",
+    "campus:export": "node scripts/build-campus-glbs.mjs && nub x tsx --tsconfig tsconfig.json scripts/build-campus-env-glb.ts && node scripts/compress-campus-env.mjs",
     "campus:check": "nub x tsx --tsconfig tsconfig.json scripts/check-landmarks.ts",
     "campus:rebuild": "nub run campus:fetch && nub run campus:align && nub run campus:export"
   },
@@ -27,6 +27,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@gltf-transform/cli": "^4.2.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^20",

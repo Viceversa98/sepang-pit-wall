@@ -2,7 +2,9 @@ import * as THREE from "three";
 import { sampleCarPose, type CarWorldPose } from "@/lib/carPose";
 import {
   clampSimDelta,
+  clampCameraY,
   isFiniteVec3,
+  MIN_CAMERA_Y,
   safeLookAt,
 } from "@/lib/cameraSafety";
 import { VEHICLE_FORWARD } from "@/lib/vehicleOrientation";
@@ -83,6 +85,9 @@ export const updateFollowCamera = (
     state.snapped = false;
     return;
   }
+
+  clampCameraY(state.desired, MIN_CAMERA_Y);
+  state.lookAt.y = Math.max(state.lookAt.y, 0);
 
   // During racing the mesh already moves smoothly every frame — lagging the
   // camera behind the car while lookAt snaps instantly was the jerk (overview

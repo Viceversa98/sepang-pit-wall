@@ -6,6 +6,9 @@ export const RACE_CAMERA_NEAR = 1.0;
 export const RACE_CAMERA_NEAR_MOBILE = 2.0;
 export const RACE_CAMERA_FAR = 3000;
 
+/** Prevent chase/overview camera dipping under track floor on bad physics frames. */
+export const MIN_CAMERA_Y = 0.5;
+
 /** Max overview target step per frame (prevents physics/worker jumps from flinging the camera). */
 export const MAX_CAMERA_PAN_UNITS_PER_FRAME = 12;
 
@@ -14,6 +17,13 @@ export const clampSimDelta = (delta: number, max = 0.1): number =>
 
 export const isFiniteVec3 = (v: THREE.Vector3): boolean =>
   Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+
+/** Clamp Y after finite check — returns false if input was non-finite. */
+export const clampCameraY = (v: THREE.Vector3, minY = MIN_CAMERA_Y): boolean => {
+  if (!isFiniteVec3(v)) return false;
+  if (v.y < minY) v.y = minY;
+  return true;
+};
 
 /** Shorten delta if a worker hiccup teleports the target. */
 export const clampPanDelta = (

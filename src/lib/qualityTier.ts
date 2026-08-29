@@ -4,6 +4,8 @@ export type RaceSceneQuality = {
   tier: QualityTier;
   dprCap: number;
   antialias: boolean;
+  /** WebGL shader precision — mediump saves mobile fill-rate. */
+  precision: "highp" | "mediump";
   shadows: boolean;
   shadowMapSize: number;
   rainCount: number;
@@ -13,6 +15,7 @@ const HIGH_QUALITY: RaceSceneQuality = {
   tier: "high",
   dprCap: 1.5,
   antialias: true,
+  precision: "highp",
   shadows: true,
   shadowMapSize: 1024,
   rainCount: 3200,
@@ -20,11 +23,12 @@ const HIGH_QUALITY: RaceSceneQuality = {
 
 const MOBILE_QUALITY: RaceSceneQuality = {
   tier: "mobile",
-  dprCap: 1.5,
-  antialias: true,
+  dprCap: 1.0,
+  antialias: false,
+  precision: "mediump",
   shadows: false,
   shadowMapSize: 0,
-  rainCount: 1800,
+  rainCount: 1200,
 };
 
 export const detectRaceSceneQuality = (): RaceSceneQuality => {

@@ -29,7 +29,9 @@ import { PitStopCrewField } from "@/scene/PitStopCrew";
 import { metresToUnits } from "@/lib/trackCurve";
 import {
   clampPanDelta,
+  clampCameraY,
   isFiniteVec3,
+  MIN_CAMERA_Y,
   RACE_CAMERA_FAR,
   RACE_CAMERA_NEAR,
   RACE_CAMERA_NEAR_MOBILE,
@@ -120,6 +122,7 @@ export class RaceScene {
     this.renderer = new THREE.WebGLRenderer({
       antialias: this.quality.antialias,
       powerPreference: "high-performance",
+      precision: this.quality.precision,
     });
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
@@ -531,25 +534,23 @@ export class RaceScene {
 
       if (this.overviewSnapKey !== "locked") {
         this.overviewSnapKey = "locked";
-        this.camera.position.set(
-          worldPos.x,
-          worldPos.y + OVERVIEW_HEIGHT,
-          worldPos.z + OVERVIEW_BACK,
-        );
+        const camY = Math.max(worldPos.y + OVERVIEW_HEIGHT, MIN_CAMERA_Y + OVERVIEW_HEIGHT * 0.5);
+        this.camera.position.set(worldPos.x, camY, worldPos.z + OVERVIEW_BACK);
         this.camera.up.set(0, 1, 0);
-        this.orbitControls.target.set(worldPos.x, worldPos.y + 2, worldPos.z);
+        this.orbitControls.target.set(worldPos.x, Math.max(worldPos.y, 0), worldPos.z);
         safeLookAt(this.camera, this.orbitControls.target);
         this.overviewPrevTarget.copy(this.orbitControls.target);
         this.orbitControls.update();
       } else {
         this.overviewNextTarget.copy(worldPos);
-        this.overviewNextTarget.y += 2;
+        this.overviewNextTarget.y = Math.max(this.overviewNextTarget.y + 2, 0);
         this.overviewDelta.copy(this.overviewNextTarget).sub(this.overviewPrevTarget);
         clampPanDelta(this.overviewDelta);
         if (!isFiniteVec3(this.overviewDelta)) return;
 
         this.orbitControls.target.copy(this.overviewNextTarget);
         this.camera.position.add(this.overviewDelta);
+        clampCameraY(this.camera.position);
         if (!isFiniteVec3(this.camera.position)) {
           this.overviewSnapKey = "";
           return;

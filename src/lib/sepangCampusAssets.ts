@@ -1,4 +1,5 @@
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import type { CampusBuildingId } from "@/lib/sepangCampusLayout";
 
 /**
@@ -18,6 +19,10 @@ export const campusGltfUrl = (id: CampusBuildingId): string =>
   CAMPUS_GLB[id] ?? defaultCampusGlbUrl(id);
 
 const loader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+loader.setDRACOLoader(dracoLoader);
+
 const gltfCache = new Map<string, Promise<GLTF>>();
 
 export const loadCampusGltf = (url: string): Promise<GLTF> => {
@@ -33,7 +38,5 @@ export const loadCampusGltf = (url: string): Promise<GLTF> => {
 };
 
 export const preloadCampusGlbs = (): void => {
-  for (const url of Object.values(CAMPUS_GLB)) {
-    if (url) void loadCampusGltf(url);
-  }
+  void loadCampusGltf(CAMPUS_ENV_GLB_URL);
 };

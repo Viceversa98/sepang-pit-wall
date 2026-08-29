@@ -1,17 +1,10 @@
 import * as THREE from "three";
 import {
   campusGlbHasMeshes,
-  fitCampusGlbToPlacement,
-  isCampusGlbFitValid,
   prepareCampusGlbForScene,
 } from "@/lib/fitCampusGlb";
-import { detectRaceSceneQuality } from "@/lib/qualityTier";
-import {
-  CAMPUS_ENV_GLB_URL,
-  campusGltfUrl,
-  loadCampusGltf,
-} from "@/lib/sepangCampusAssets";
-import { resolveCampusPlacements, type CampusPlacement } from "@/lib/sepangCampusLayout";
+import { CAMPUS_ENV_GLB_URL, loadCampusGltf } from "@/lib/sepangCampusAssets";
+import { resolveCampusPlacements } from "@/lib/sepangCampusLayout";
 import { prepareStaticMesh } from "@/lib/staticMesh";
 import { buildCampusKit } from "@/scene/campus/buildKit";
 import { buildOsmBackdrop, disposeOsmBackdrop } from "@/scene/campus/buildOsmBackdrop";
@@ -27,8 +20,6 @@ export type SepangCampusHandle = {
   dispose: () => void;
 };
 
-const PER_BUILDING_CONCURRENCY = 2;
-
 const disposeGroup = (group: THREE.Object3D): void => {
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
@@ -38,64 +29,6 @@ const disposeGroup = (group: THREE.Object3D): void => {
       else mat?.dispose();
     }
   });
-};
-
-const trySwapCampusGlb = async (
-  placement: CampusPlacement,
-  root: THREE.Group,
-  procedural: THREE.Group,
-  alive: () => boolean,
-): Promise<void> => {
-  if (!alive()) return;
-
-  const url = campusGltfUrl(placement.id);
-
-  try {
-    const gltf = await loadCampusGltf(url);
-    if (!alive()) return;
-
-    const model = gltf.scene.clone(true);
-    if (!campusGlbHasMeshes(model)) return;
-
-    fitCampusGlbToPlacement(model, placement);
-    if (!isCampusGlbFitValid(model, placement)) return;
-
-    prepareCampusGlbForScene(model);
-    model.name = `campus-glb-${placement.id}-${placement.segmentIndex}`;
-
-    if (!alive() || procedural.parent !== root) return;
-
-    procedural.visible = false;
-    root.add(model);
-  } catch (err) {
-    if (import.meta.env.DEV) {
-      console.warn(`[campus] GLB swap failed for ${placement.id}:`, err);
-    }
-  }
-};
-
-const runPerBuildingSwaps = (
-  placements: CampusPlacement[],
-  entryByKey: Map<string, CampusEntry>,
-  alive: () => boolean,
-): void => {
-  let cursor = 0;
-  let active = 0;
-
-  const pump = (): void => {
-    while (active < PER_BUILDING_CONCURRENCY && cursor < placements.length) {
-      const placement = placements[cursor++];
-      const entry = entryByKey.get(`${placement.id}-${placement.segmentIndex}`);
-      if (!entry) continue;
-      active += 1;
-      void trySwapCampusGlb(placement, entry.root, entry.procedural, alive).finally(() => {
-        active -= 1;
-        pump();
-      });
-    }
-  };
-
-  pump();
 };
 
 const tryLoadMergedCampusEnv = async (
@@ -124,7 +57,7 @@ const tryLoadMergedCampusEnv = async (
     return true;
   } catch (err) {
     if (import.meta.env.DEV) {
-      console.warn("[campus] merged campus-env.glb unavailable, using procedural fallback:", err);
+      console.warn("[campus] campus-env.glb unavailable — procedural fallback:", err);
     }
     return false;
   }
@@ -142,7 +75,6 @@ export const createSepangCampus = (): SepangCampusHandle => {
   group.add(backdrop);
 
   const placements = resolveCampusPlacements();
-  const entryByKey = new Map<string, CampusEntry>();
 
   for (const placement of placements) {
     const root = new THREE.Group();
@@ -155,18 +87,10 @@ export const createSepangCampus = (): SepangCampusHandle => {
     root.add(procedural);
     group.add(root);
 
-    const entry = { root, procedural };
-    entries.push(entry);
-    entryByKey.set(`${placement.id}-${placement.segmentIndex}`, entry);
+    entries.push({ root, procedural });
   }
 
-  const quality = detectRaceSceneQuality();
-
-  void tryLoadMergedCampusEnv(group, entries, alive).then((merged) => {
-    if (!alive() || merged) return;
-    if (quality.tier === "mobile") return;
-    runPerBuildingSwaps(placements, entryByKey, alive);
-  });
+  void tryLoadMergedCampusEnv(group, entries, alive);
 
   const update = (_camera: THREE.Camera): void => {
     for (const entry of entries) {
