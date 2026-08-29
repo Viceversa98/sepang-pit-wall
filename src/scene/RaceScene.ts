@@ -38,7 +38,9 @@ import {
   type RacePhase,
 } from "@/stores/raceStore";
 import { detectRaceSceneQuality, type RaceSceneQuality } from "@/lib/qualityTier";
+import { AdaptiveDpr } from "@/lib/adaptiveDpr";
 import { getHostElementSize } from "@/lib/viewportLayout";
+import { attachWebGlCanvas } from "@/lib/webglCanvas";
 
 const DEFAULT_RAIN_COUNT = 3200;
 const OVERVIEW_HEIGHT = 100;
@@ -93,11 +95,15 @@ export class RaceScene {
   private disposed = false;
   private quality: RaceSceneQuality = detectRaceSceneQuality();
   private rainCount = DEFAULT_RAIN_COUNT;
+  private adaptiveDpr: AdaptiveDpr | null = null;
+  private runtimeDprCap = 1.5;
 
   init(hostElement: HTMLElement): void {
     this.hostElement = hostElement;
     this.quality = detectRaceSceneQuality();
     this.rainCount = this.quality.rainCount;
+    this.runtimeDprCap = this.quality.dprCap;
+    this.adaptiveDpr = new AdaptiveDpr(this.quality.dprCap);
     const state = useRaceStore.getState();
 
     this.renderer = new THREE.WebGLRenderer({
@@ -105,7 +111,7 @@ export class RaceScene {
       powerPreference: "high-performance",
     });
     this.renderer.shadowMap.enabled = this.quality.shadows;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.dprCap));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 900);
     this.camera.position.set(0, 160, 140);
@@ -203,13 +209,8 @@ export class RaceScene {
       useRaceStore.getState().unlockOverviewFollow();
     });
 
-    hostElement.appendChild(this.renderer.domElement);
+    attachWebGlCanvas(this.renderer.domElement, hostElement);
     this.resize();
-
-    const canvas = this.renderer.domElement;
-    canvas.addEventListener("webglcontextlost", (event) => {
-      event.preventDefault();
-    });
   }
 
   update(dt: number): void {
@@ -283,6 +284,12 @@ export class RaceScene {
     }
 
     this.renderer.render(this.scene, this.camera);
+
+    const dprChange = this.adaptiveDpr?.tick(dt);
+    if (dprChange !== null && dprChange !== undefined) {
+      this.runtimeDprCap = dprChange;
+      this.resize();
+    }
   }
 
   resize(): void {
@@ -291,10 +298,11 @@ export class RaceScene {
     if (!size) return;
 
     const { width, height } = size;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.dprCap));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, true);
+    // CSS fills the host; buffer size comes from host metrics only (no layout feedback loop).
+    this.renderer.setSize(width, height, false);
   }
 
   dispose(): void {

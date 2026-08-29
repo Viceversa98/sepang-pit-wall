@@ -1,3 +1,5 @@
+import { MIN_HOST_CANVAS_PX } from "@/lib/webglCanvas";
+
 export type RaceLayoutMode = "desktop" | "mobilePortrait" | "mobileLandscape";
 
 export type HostElementSize = {
@@ -11,18 +13,18 @@ export const getHostElementSize = (host: HTMLElement): HostElementSize | null =>
   let width = Math.round(rect.width);
   let height = Math.round(rect.height);
 
-  if (width < 1 || height < 1) {
+  if (width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) {
     width = host.clientWidth;
     height = host.clientHeight;
   }
 
   const viewport = window.visualViewport;
-  if ((width < 1 || height < 1) && viewport) {
+  if ((width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) && viewport) {
     width = Math.round(viewport.width);
     height = Math.round(viewport.height);
   }
 
-  if (width < 1 || height < 1) return null;
+  if (width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) return null;
   return { width, height };
 };
 
@@ -31,7 +33,7 @@ export const scheduleHostResizeBursts = (callback: () => void): (() => void) => 
   callback();
   requestAnimationFrame(callback);
 
-  const timers = [100, 300, 600].map((ms) => window.setTimeout(callback, ms));
+  const timers = [100, 300, 600, 1000].map((ms) => window.setTimeout(callback, ms));
   return () => {
     for (const id of timers) window.clearTimeout(id);
   };

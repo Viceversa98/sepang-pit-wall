@@ -1,3 +1,4 @@
+import { setRaceAudioMuted } from "@/lib/raceAudio";
 import { createStore } from "@/stores/createStore";
 import {
   fetchSepangWeather,
@@ -963,6 +964,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   },
 
   setAudioMuted: (muted) => {
+    setRaceAudioMuted(muted);
     set({ audioMuted: muted });
   },
 

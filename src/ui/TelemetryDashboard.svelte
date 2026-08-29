@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PIT_LANE_LIMIT_KMH } from "@/lib/pitStop";
+  import { unlockRaceAudio, unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import { defaultTiming, syncPolledTiming, buildTimingTower } from "@/stores/polledRaceTelemetry";
   import { useRaceStore } from "@/stores/raceStore";
   import TrackMinimap from "@/ui/TrackMinimap.svelte";
@@ -56,8 +57,12 @@
   );
 
   const handleToggleMute = () => {
-    const s = useRaceStore.getState();
-    s.setAudioMuted(!s.audioMuted);
+    unlockRaceAudioFromGesture();
+    void unlockRaceAudio().then((ok) => {
+      if (!ok) return;
+      const s = useRaceStore.getState();
+      s.setAudioMuted(!s.audioMuted);
+    });
   };
 </script>
 

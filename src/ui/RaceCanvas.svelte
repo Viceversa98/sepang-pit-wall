@@ -11,8 +11,10 @@
   let hostEl: HTMLDivElement | undefined = $state();
   let raceScene: RaceScene | null = null;
   let removeRenderer: (() => void) | null = null;
+  let webglPaused = false;
   let cameraMode = $state(useRaceStore.getState().cameraMode);
   let showBraveWebGlHint = $state(false);
+  let showIsolationHint = $state(false);
 
   $effect(() => {
     return useRaceStore.subscribe((s) => {
@@ -26,23 +28,41 @@
     canvas.style.touchAction = cameraMode === "overview" ? "none" : "manipulation";
   });
 
+  const mountScene = (): void => {
+    if (!hostEl) return;
+    raceScene?.dispose();
+    raceScene = new RaceScene();
+    raceScene.init(hostEl);
+  };
+
   onMount(() => {
     if (!hostEl) return;
 
-    raceScene = new RaceScene();
-    raceScene.init(hostEl);
+    if (typeof crossOriginIsolated === "boolean" && !crossOriginIsolated) {
+      showIsolationHint = true;
+    }
 
-    removeRenderer = addFrameRenderer((dt) => raceScene?.update(dt));
+    mountScene();
+
+    removeRenderer = addFrameRenderer((dt) => {
+      if (!webglPaused) raceScene?.update(dt);
+    });
 
     const canvas = hostEl.querySelector("canvas");
+
     const onLost = (event: Event): void => {
       event.preventDefault();
-      raceScene?.dispose();
-      raceScene = new RaceScene();
-      raceScene.init(hostEl!);
-      scheduleResize();
+      webglPaused = true;
     };
+
+    const onRestored = (): void => {
+      mountScene();
+      scheduleResize();
+      webglPaused = false;
+    };
+
     canvas?.addEventListener("webglcontextlost", onLost, false);
+    canvas?.addEventListener("webglcontextrestored", onRestored, false);
 
     const scheduleResize = (): void => {
       raceScene?.resize();
@@ -74,6 +94,7 @@
 
     return () => {
       canvas?.removeEventListener("webglcontextlost", onLost);
+      canvas?.removeEventListener("webglcontextrestored", onRestored);
       stopBurstResize();
       resizeObserver.disconnect();
       stopLayout();
@@ -93,12 +114,37 @@
   const handleDismissBraveHint = (): void => {
     showBraveWebGlHint = false;
   };
+
+  const handleDismissIsolationHint = (): void => {
+    showIsolationHint = false;
+  };
 </script>
 
 <div
   bind:this={hostEl}
-  class="absolute inset-0 z-0 min-h-[200px] w-full overflow-hidden bg-[var(--background)] [&>canvas]:block"
+  class="absolute inset-0 z-0 min-h-[200px] w-full touch-none overflow-hidden bg-[var(--background)]"
+  aria-hidden="true"
 ></div>
+
+{#if showIsolationHint}
+  <div
+    class="pointer-events-auto absolute inset-x-2 top-2 z-10 rounded-sm border border-rose-400/35 bg-rose-950/90 px-3 py-2 font-mono text-[10px] leading-snug text-rose-100/95 shadow-lg md:inset-x-auto md:right-3 md:max-w-xs md:text-[11px]"
+    role="alert"
+  >
+    <p>
+      Cross-origin isolation is off — physics workers may fail on mobile. Ensure COOP/COEP headers
+      reach the browser (check CDN / edge cache rules).
+    </p>
+    <button
+      type="button"
+      class="mt-2 text-[10px] tracking-wide text-rose-300 uppercase underline underline-offset-2"
+      aria-label="Dismiss cross-origin isolation hint"
+      onclick={handleDismissIsolationHint}
+    >
+      Dismiss
+    </button>
+  </div>
+{/if}
 
 {#if showBraveWebGlHint}
   <div

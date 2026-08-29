@@ -10,6 +10,7 @@
     syncPolledTiming,
     buildTimingTower,
   } from "@/stores/polledRaceTelemetry";
+  import { unlockRaceAudio, unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import {
     useRaceStore,
     type CameraMode,
@@ -130,8 +131,12 @@
   };
 
   const handleToggleMute = () => {
-    const s = useRaceStore.getState();
-    s.setAudioMuted(!s.audioMuted);
+    unlockRaceAudioFromGesture();
+    void unlockRaceAudio().then((ok) => {
+      if (!ok) return;
+      const s = useRaceStore.getState();
+      s.setAudioMuted(!s.audioMuted);
+    });
   };
 
   const handleOpenTiming = () => {
@@ -193,7 +198,7 @@
             aria-pressed={race.audioMuted}
             onclick={handleToggleMute}
           >
-            {race.audioMuted ? "Mute" : "Audio"}
+            {race.audioMuted ? "Off" : "On"}
           </button>
           <button
             type="button"

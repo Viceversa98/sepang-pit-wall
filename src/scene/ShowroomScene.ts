@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { getHostElementSize } from "@/lib/viewportLayout";
+import { attachWebGlCanvas } from "@/lib/webglCanvas";
 import { createF1CarMesh } from "@/scene/F1CarMesh";
 import { useRaceStore } from "@/stores/raceStore";
 
@@ -43,7 +44,7 @@ export class ShowroomScene {
     this.controls.maxDistance = 12;
     this.controls.target.set(0, 0.4, 0);
 
-    hostElement.appendChild(this.renderer.domElement);
+    attachWebGlCanvas(this.renderer.domElement, hostElement);
     this.resize();
 
     const loop = (): void => {
@@ -75,7 +76,7 @@ export class ShowroomScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, true);
+    this.renderer.setSize(width, height, false);
   }
 
   dispose(): void {

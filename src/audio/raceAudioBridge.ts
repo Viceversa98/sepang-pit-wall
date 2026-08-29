@@ -1,5 +1,6 @@
 import {
   disposeRaceAudio,
+  ensureRaceAudioRunning,
   isRaceAudioUnlocked,
   onRaceAudioBuffersReady,
   setRaceAudioMuted,
@@ -126,9 +127,20 @@ export const mountRaceAudioBridge = (): (() => void) => {
 
   const tryUnlockAndSync = () => {
     void unlockRaceAudio().then((ok) => {
-      if (ok) handleSlice(lastSlice);
+      if (ok) {
+        ensureRaceAudioRunning();
+        handleSlice(lastSlice);
+      }
     });
   };
+
+  // Landing / mission buttons may unlock before this bridge subscribes — catch up immediately.
+  if (isRaceAudioUnlocked()) {
+    ensureRaceAudioRunning();
+    handleSlice(lastSlice);
+  } else {
+    tryUnlockAndSync();
+  }
 
   const unlockOpts: AddEventListenerOptions = { capture: true, passive: true };
   window.addEventListener("pointerdown", tryUnlockAndSync, unlockOpts);
@@ -144,6 +156,7 @@ export const mountRaceAudioBridge = (): (() => void) => {
   const pollLiveAudio = () => {
     const s = useRaceStore.getState();
     if (isRaceAudioUnlocked() && !s.audioMuted) {
+      ensureRaceAudioRunning();
       const livePlayer =
         s.phase === "racing" ? getLiveRaceCars().find((c) => c.isPlayer) : undefined;
       const storePlayer = s.cars.find((c) => c.isPlayer);

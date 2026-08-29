@@ -123,7 +123,7 @@ const primeAudioContext = async (c: AudioContext): Promise<void> => {
   await c.resume();
 };
 
-const fetchAudio = async (url: string, ms = 2500): Promise<Response | null> => {
+const fetchAudio = async (url: string, ms = 8000): Promise<Response | null> => {
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), ms);
   try {
@@ -168,6 +168,17 @@ export const onRaceAudioBuffersReady = (cb: () => void): (() => void) => {
 /** True only after a user gesture successfully started the AudioContext. */
 export const isRaceAudioUnlocked = (): boolean =>
   unlocked && !!ctx && ctx.state !== "closed";
+
+/** Resume suspended context synchronously when possible (mobile tab focus / gesture). */
+export const ensureRaceAudioRunning = (): boolean => {
+  const c = ensureCtx();
+  if (!c || !unlocked) return false;
+  if (audioContextRunning(c)) return true;
+  if (c.state === "suspended") {
+    primeAudioContextSync(c);
+  }
+  return audioContextRunning(c);
+};
 
 export const unlockRaceAudio = async (): Promise<boolean> => {
   if (typeof window === "undefined") return false;
@@ -478,7 +489,7 @@ type LoopAudioSnap = {
 export const syncRaceLoopAudio = (snap: LoopAudioSnap): void => {
   if (!isRaceAudioUnlocked()) return;
   const c = ensureCtx();
-  if (!c || !audioContextRunning(c)) {
+  if (!c || !ensureRaceAudioRunning()) {
     if (engineGain) stopEngineSynth();
     if (pitBedGain) stopPitBed();
     return;
