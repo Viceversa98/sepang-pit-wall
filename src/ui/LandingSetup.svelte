@@ -103,7 +103,7 @@
       class="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
     >
       <div
-        class="h-[34dvh] max-h-[300px] w-full shrink-0 overflow-hidden lg:h-full lg:max-h-none lg:min-h-[220px]"
+        class="relative h-[34dvh] max-h-[300px] w-full shrink-0 overflow-hidden lg:h-full lg:max-h-none lg:min-h-[220px]"
         aria-hidden="true"
       >
         <CarShowroom />

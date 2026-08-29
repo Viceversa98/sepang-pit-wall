@@ -34,4 +34,4 @@
   });
 </script>
 
-<div bind:this={hostEl} class="h-full w-full min-h-[220px]"></div>
+<div bind:this={hostEl} class="relative h-full w-full min-h-[220px] overflow-hidden"></div>
