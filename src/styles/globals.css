@@ -42,6 +42,24 @@ body {
     var(--pw-panel);
 }
 
+/* Native selects: force dark list + readable options (Windows uses light popup by default). */
+.pw-select {
+  color-scheme: dark;
+  background-color: var(--pw-panel-elevated);
+  color: var(--foreground);
+}
+
+.pw-select option {
+  background-color: var(--pw-panel-elevated);
+  color: var(--foreground);
+}
+
+.pw-select option:checked,
+.pw-select option:hover {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
 @keyframes podium-fade-in {
   from {
     opacity: 0;

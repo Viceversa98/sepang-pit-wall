@@ -12,6 +12,12 @@ export type MapPoint = { x: number; y: number; t: number };
 
 export type TurnLabel = { label: string; x: number; y: number; t: number };
 
+type NormTransform = {
+  cx: number;
+  cz: number;
+  span: number;
+};
+
 export type TrackMapLayout = {
   path: MapPoint[];
   drsPath: MapPoint[];
@@ -20,11 +26,13 @@ export type TrackMapLayout = {
   startFinish: MapPoint;
   turns: TurnLabel[];
   viewBox: { minX: number; minY: number; width: number; height: number };
+  /** Shared world XZ → map 0–1 transform (all overlays use this). */
+  transform: NormTransform;
 };
 
 const SAMPLE = 320;
 
-const normalizePath = (pts: { x: number; z: number; t: number }[]): MapPoint[] => {
+const computeNormTransform = (pts: { x: number; z: number }[]): NormTransform => {
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -37,15 +45,26 @@ const normalizePath = (pts: { x: number; z: number; t: number }[]): MapPoint[] =
   }
   const pad = Math.max(maxX - minX, maxZ - minZ) * 0.06;
   const span = Math.max(maxX - minX, maxZ - minZ) + pad * 2;
-  const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
-
-  return pts.map((p) => ({
-    t: p.t,
-    x: 0.5 + (p.x - cx) / span,
-    y: 0.5 - (p.z - cz) / span,
-  }));
+  return {
+    cx: (minX + maxX) / 2,
+    cz: (minZ + maxZ) / 2,
+    span,
+  };
 };
+
+const applyNorm = (
+  p: { x: number; z: number; t: number },
+  tr: NormTransform,
+): MapPoint => ({
+  t: p.t,
+  x: 0.5 + (p.x - tr.cx) / tr.span,
+  y: 0.5 - (p.z - tr.cz) / tr.span,
+});
+
+const normalizePath = (
+  pts: { x: number; z: number; t: number }[],
+  tr: NormTransform,
+): MapPoint[] => pts.map((p) => applyNorm(p, tr));
 
 const sampleCurve = (steps: number): { x: number; z: number; t: number }[] => {
   const curve = getTrackCurve();
@@ -89,12 +108,24 @@ const detectTurns = (path: MapPoint[]): TurnLabel[] => {
   });
 };
 
+/** Interpolate map position at lap progress t ∈ [0, 1). */
 const pointAtT = (path: MapPoint[], t: number): MapPoint => {
-  let best = path[0];
-  for (const p of path) {
-    if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
-  }
-  return best;
+  const u = ((t % 1) + 1) % 1;
+  if (path.length === 0) return { x: 0.5, y: 0.5, t: u };
+  if (path.length === 1) return path[0];
+
+  const steps = path.length - 1;
+  const f = u * steps;
+  let i = Math.floor(f);
+  if (i >= steps) i = steps - 1;
+  const frac = f - i;
+  const a = path[i];
+  const b = path[i + 1];
+  return {
+    t: u,
+    x: a.x + (b.x - a.x) * frac,
+    y: a.y + (b.y - a.y) * frac,
+  };
 };
 
 let cachedLayout: TrackMapLayout | null = null;
@@ -103,10 +134,11 @@ export const buildTrackMapLayout = (): TrackMapLayout => {
   if (cachedLayout) return cachedLayout;
 
   const raw = sampleCurve(SAMPLE);
-  const path = normalizePath(raw);
+  const transform = computeNormTransform(raw);
+  const path = normalizePath(raw, transform);
 
-  const drsRaw: { x: number; z: number; t: number }[] = [];
   const curve = getTrackCurve();
+  const drsRaw: { x: number; z: number; t: number }[] = [];
   const drsSteps = 24;
   for (let i = 0; i <= drsSteps; i++) {
     const u = i / drsSteps;
@@ -115,7 +147,8 @@ export const buildTrackMapLayout = (): TrackMapLayout => {
     drsRaw.push({ x: p.x, z: p.z, t });
   }
 
-  const drsPath = normalizePath(drsRaw);
+  // Same transform as the full circuit — keeps DRS overlay on the grey track line.
+  const drsPath = normalizePath(drsRaw, transform);
   const turns = detectTurns(path);
 
   let minX = 1;
@@ -136,6 +169,7 @@ export const buildTrackMapLayout = (): TrackMapLayout => {
     pitExit: pointAtT(path, PIT_EXIT_T),
     startFinish: pointAtT(path, 0),
     turns,
+    transform,
     viewBox: {
       minX: minX - 0.04,
       minY: minY - 0.04,
@@ -150,7 +184,14 @@ export const buildTrackMapLayout = (): TrackMapLayout => {
 export const progressToMap = (lapProgress: number): { x: number; y: number } => {
   const layout = buildTrackMapLayout();
   const t = ((lapProgress % 1) + 1) % 1;
-  return pointAtT(layout.path, t);
+  const p = pointAtT(layout.path, t);
+  return { x: p.x, y: p.y };
+};
+
+/** Project sim world XZ onto the minimap (matches 3D car pose). */
+export const worldXZToMap = (worldX: number, worldZ: number): { x: number; y: number } => {
+  const { transform } = buildTrackMapLayout();
+  return applyNorm({ x: worldX, z: worldZ, t: 0 }, transform);
 };
 
 export const getTrackOutlinePoints = (): THREE.Vector3[] => SEPANG_CONTROL_POINTS;

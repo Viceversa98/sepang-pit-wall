@@ -7,6 +7,18 @@ import {
   type TyreCompound,
 } from "@/stores/raceStore";
 
+/** Top-N timing tower — always includes the player row even when outside the cut. */
+export const buildTimingTower = (
+  standings: StandingsRow[],
+  maxRows = 6,
+): StandingsRow[] => {
+  if (standings.length <= maxRows) return standings;
+  const player = standings.find((r) => r.isPlayer);
+  const top = standings.slice(0, maxRows);
+  if (!player || top.some((r) => r.id === player.id)) return top;
+  return [...standings.slice(0, maxRows - 1), player];
+};
+
 /** Fast-changing strategy desk fields — poll instead of store subscribe. */
 export type PolledStrategyState = {
   engineMode: EngineMode;

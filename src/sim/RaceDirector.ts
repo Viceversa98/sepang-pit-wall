@@ -16,6 +16,7 @@ import {
 import { setRaceSimContext } from "@/sim/raceSimContext";
 import {
   FIELD_META,
+  gridSlotForCar,
   stepRaceSimulation,
   useRaceStore,
   type CarState,
@@ -70,7 +71,7 @@ export class RaceDirector {
     const { buffer } = this.shared;
     const collider = buildTrackCollider();
     const state = useRaceStore.getState();
-    const initialPoses = FIELD_META.map((meta, index) => {
+    const initialPoses = FIELD_META.map((meta) => {
       const car = state.cars.find((c) => c.id === meta.id);
       if (!car) {
         return {
@@ -79,7 +80,7 @@ export class RaceDirector {
           kinematic: true,
         };
       }
-      return poseToInit(car, state.phase, index);
+      return poseToInit(car, state.phase, gridSlotForCar(car));
     });
 
     const physicsWorker = new Worker(new URL("@/workers/physicsWorker.ts", import.meta.url), {
@@ -130,7 +131,7 @@ export class RaceDirector {
   resetPhysicsPoses(): void {
     if (!this.workers) return;
     const state = useRaceStore.getState();
-    const poses = FIELD_META.map((meta, index) => {
+    const poses = FIELD_META.map((meta) => {
       const car = state.cars.find((c) => c.id === meta.id);
       if (!car) {
         return {
@@ -139,7 +140,7 @@ export class RaceDirector {
           kinematic: true,
         };
       }
-      return poseToInit(car, state.phase, index);
+      return poseToInit(car, state.phase, gridSlotForCar(car));
     });
     this.workers.physicsWorker.postMessage({ type: "resetPoses", payload: { poses } });
   }
@@ -181,7 +182,7 @@ export class RaceDirector {
         kinematic: true,
       });
 
-      const pose = sampleCarPose(car, state.phase, car.id, index);
+      const pose = sampleCarPose(car, state.phase, car.id, gridSlotForCar(car));
       const quat = quatFromTangent(pose.tangent);
       writeVehicleKinematicPose(
         floats,

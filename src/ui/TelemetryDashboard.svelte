@@ -1,6 +1,6 @@
 <script lang="ts">
   import { PIT_LANE_LIMIT_KMH } from "@/lib/pitStop";
-  import { defaultTiming, syncPolledTiming } from "@/stores/polledRaceTelemetry";
+  import { defaultTiming, syncPolledTiming, buildTimingTower } from "@/stores/polledRaceTelemetry";
   import { useRaceStore } from "@/stores/raceStore";
   import TrackMinimap from "@/ui/TrackMinimap.svelte";
 
@@ -40,7 +40,12 @@
 
   const wearHot = $derived(timing.tireWear < 35);
   const weatherLabel = $derived(race.weather?.label ?? "…");
-  const tower = $derived(timing.standings.slice(0, 6));
+  const tower = $derived(buildTimingTower(timing.standings, 6));
+  const playerOutsideTop = $derived.by(() => {
+    const player = timing.standings.find((r) => r.isPlayer);
+    if (!player || timing.standings.length <= 6) return false;
+    return !timing.standings.slice(0, 6).some((r) => r.id === player.id);
+  });
 
   const compoundLetter = $derived(
     timing.currentCompound === "intermediate"
@@ -147,9 +152,13 @@
   {/if}
 
   <ul class="space-y-0.5 border-t border-white/10 pt-1.5 font-mono text-[10px]" role="list">
-    {#each tower as row (row.id)}
+    {#each tower as row, i (row.id)}
+      {#if playerOutsideTop && i === tower.length - 1 && row.isPlayer}
+        <li class="px-1 py-0.5 text-center text-white/25" aria-hidden="true">···</li>
+      {/if}
       <li
-        class="flex items-center gap-1 rounded-sm px-1 py-0.5 {row.isPlayer ? 'bg-rose-400/20' : ''}"
+        class="flex items-center gap-1 rounded-sm px-1 py-0.5"
+        style:background-color={row.isPlayer ? `${row.color}33` : undefined}
       >
         <span class="w-3.5 tabular-nums text-white/40">{row.position}</span>
         <span
@@ -158,16 +167,15 @@
           aria-hidden="true"
         ></span>
         <span
-          class="min-w-0 flex-1 truncate {row.isPlayer
-            ? 'font-semibold text-rose-50'
-            : 'text-white/85'}"
+          class="min-w-0 flex-1 truncate {row.isPlayer ? 'font-semibold' : 'text-white/85'}"
+          style:color={row.isPlayer ? row.color : undefined}
         >
           {row.name}
         </span>
         <span class="uppercase {compoundTint[row.compound] ?? 'text-white/40'}">
           {row.compound[0]}
         </span>
-        <span class="w-10 text-right tabular-nums text-white/45">{row.gapLabel}</span>
+        <span class="w-10 text-right tabular-nums {row.carStatus === 'retired' ? 'text-amber-300' : 'text-white/45'}">{row.gapLabel}</span>
       </li>
     {/each}
   </ul>

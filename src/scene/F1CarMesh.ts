@@ -508,6 +508,7 @@ export const createF1CarMesh = (color: string, isPlayer = false): THREE.Group =>
   addBrakeLight(0, u(0.24), rearZ - u(0.14));
 
   root.userData.brakeLightMats = brakeLightMats;
+  root.userData.bodyMat = mats.body;
 
   root.userData.dispose = () => {
     hullGeo.dispose();
@@ -537,6 +538,14 @@ export const createF1CarMesh = (color: string, isPlayer = false): THREE.Group =>
   return root;
 };
 
+/** Repaint body livery only — keeps carbon, wings and tyres unchanged. */
+export const setF1CarBodyColor = (root: THREE.Object3D, color: string): void => {
+  const bodyMat = root.userData.bodyMat as THREE.MeshStandardMaterial | undefined;
+  if (!bodyMat) return;
+  bodyMat.color.set(color);
+  bodyMat.emissive.set(color);
+};
+
 /** Spin wheels and steer fronts from physics telemetry. */
 export const updateF1CarWheels = (
   root: THREE.Object3D,
@@ -554,6 +563,21 @@ export const updateF1CarWheels = (
   const fr = root.getObjectByName("wheelFR");
   if (fl) fl.rotation.y = steerAngle;
   if (fr) fr.rotation.y = steerAngle;
+};
+
+/** Flash hazard lamps on a stationary retired car. */
+export const updateF1CarHazardLights = (root: THREE.Object3D, timeMs: number): void => {
+  const mats = root.userData.brakeLightMats as THREE.MeshStandardMaterial[] | undefined;
+  if (!mats?.length) return;
+
+  const flash = Math.sin(timeMs * 0.009) > 0;
+  const emissiveIntensity = flash ? 2.2 : 0.15;
+  const color = flash ? "#ffcc00" : "#3a2808";
+
+  for (const mat of mats) {
+    mat.emissiveIntensity = emissiveIntensity;
+    mat.color.set(color);
+  }
 };
 
 /** Drive rear brake lamp emissive from sim brake demand (0–1). */

@@ -6,7 +6,7 @@
     type EngineMode,
     type TyreCompound,
   } from "@/stores/raceStore";
-  import { pwButtonClass } from "@/ui/pwButton";
+  import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
 
   const ENGINE_COPY: Record<EngineMode, string> = {
     push: "Attack — burns tyres",
@@ -22,11 +22,9 @@
     wet: "Heavy wet only",
   };
 
-  const selectClass =
-    "w-full rounded-sm border border-white/15 bg-white/5 px-2.5 py-2 font-mono text-xs text-slate-200 outline-none focus:border-amber-400/50 disabled:cursor-not-allowed disabled:opacity-45";
-
-  let race = $state(useRaceStore.getState());
+  const selectClass = pwSelectClass("disabled:cursor-not-allowed disabled:opacity-45");
   let strategy = $state(defaultStrategy());
+  let race = $state(useRaceStore.getState());
 
   $effect(() => {
     return useRaceStore.subscribe((s) => {
@@ -43,6 +41,10 @@
   });
 
   const disabled = $derived(race.phase !== "racing");
+  const stintSetupDisabled = $derived(
+    race.phase === "starting" || race.phase === "finished",
+  );
+  const preRaceGrid = $derived(race.phase === "ready");
   const wearCritical = $derived(strategy.tireWear < 35);
   const rainRisk = $derived(
     (strategy.rainIntensity > 0.45 &&
@@ -94,12 +96,21 @@
     </p>
   </div>
 
+  {#if preRaceGrid}
+    <div
+      class="rounded-sm border border-cyan-500/35 bg-cyan-950/35 px-3 py-2 font-mono text-[11px] tracking-wide text-cyan-100"
+      role="status"
+    >
+      Grid setup — pick starting compound and engine before Start.
+    </div>
+  {/if}
+
   {#if race.phase === "starting"}
     <div
       class="rounded-sm border border-red-500/40 bg-red-950/40 px-3 py-2 font-mono text-[11px] tracking-wide text-red-200"
       role="status"
     >
-      Hands off — lights sequence. Controls unlock at lights out.
+      Hands off — lights sequence. Strategy unlocks at lights out.
     </div>
   {/if}
 
@@ -165,7 +176,7 @@
       <select
         class={selectClass}
         value={strategy.engineMode}
-        {disabled}
+        disabled={stintSetupDisabled}
         aria-label="Engine mode"
         onchange={handleEngineChange}
       >
@@ -177,11 +188,13 @@
     <p class="text-[11px] text-slate-500">{ENGINE_COPY[strategy.engineMode]}</p>
 
     <label class="block space-y-1">
-      <span class="font-mono text-[10px] text-slate-400">Compound (queues box)</span>
+      <span class="font-mono text-[10px] text-slate-400">
+        {preRaceGrid ? "Starting compound" : "Compound (queues box)"}
+      </span>
       <select
         class={selectClass}
         value={strategy.currentCompound}
-        {disabled}
+        disabled={stintSetupDisabled}
         aria-label="Tyre compound"
         onchange={handleCompoundChange}
       >

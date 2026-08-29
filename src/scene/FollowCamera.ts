@@ -54,7 +54,7 @@ export const updateFollowCamera = (
   let position = state.poseScratch.position;
   let tangent = state.poseScratch.tangent;
 
-  if (carGroup && phase === "racing" && !car.isBoxing) {
+  if (carGroup && !car.isBoxing) {
     position = carGroup.position;
     _tangent.copy(VEHICLE_FORWARD).applyQuaternion(carGroup.quaternion).normalize();
     tangent = _tangent;
@@ -74,7 +74,12 @@ export const updateFollowCamera = (
 
   state.lookAt.copy(position).addScaledVector(tangent, LOOK_AHEAD);
 
-  if (!state.snapped) {
+  // During racing the mesh already moves smoothly every frame — lagging the
+  // camera behind the car while lookAt snaps instantly was the jerk (overview
+  // avoids this by rigidly translating camera + target together).
+  const hardLock = Boolean(carGroup);
+
+  if (hardLock || !state.snapped) {
     camera.position.copy(state.desired);
     state.snapped = true;
   } else {

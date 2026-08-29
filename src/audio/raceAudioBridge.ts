@@ -1,9 +1,11 @@
 import {
   disposeRaceAudio,
   setRaceAudioMuted,
+  syncEngineSpeed,
   syncRaceAudio,
   unlockRaceAudio,
 } from "@/lib/raceAudio";
+import { getLiveRaceCars } from "@/lib/raceLiveCars";
 import type { PitPhase, RacePhase } from "@/stores/raceStore";
 import { useRaceStore } from "@/stores/raceStore";
 
@@ -26,7 +28,10 @@ export type RaceAudioSlice = {
 export const selectRaceAudioSlice = (
   s: ReturnType<typeof useRaceStore.getState>,
 ): RaceAudioSlice => {
-  const player = s.cars.find((c) => c.isPlayer);
+  const livePlayer =
+    s.phase === "racing" ? getLiveRaceCars().find((c) => c.isPlayer) : undefined;
+  const storePlayer = s.cars.find((c) => c.isPlayer);
+  const player = livePlayer ?? storePlayer;
   return {
     audioMuted: s.audioMuted,
     phase: s.phase,
@@ -37,7 +42,7 @@ export const selectRaceAudioSlice = (
     pitServiceDone: !!player?.pitServiceDone,
     pitHoldTraffic: !!player?.pitHoldTraffic,
     unsafeReleasePenaltyMs: player?.unsafeReleasePenaltyMs ?? 0,
-    speedMps: s.speedMps,
+    speedMps: player?.speedMps ?? s.speedMps,
     startLightCount: s.startLightCount,
     startLightsGreen: s.startLightsGreen,
     startLightsOut: s.startLightsOut,
@@ -61,7 +66,7 @@ export const raceAudioSliceEqual = (a: RaceAudioSlice, b: RaceAudioSlice): boole
 
 /**
  * Bridges race/pit store state → Web Audio cues.
- * Call once from GameShell; unlocks on first pointer/key.
+ * Call once from GameShell; unlocks on user gesture then re-syncs audio.
  */
 export const mountRaceAudioBridge = (): (() => void) => {
   let prevPitPhase: string | null = null;
@@ -69,12 +74,8 @@ export const mountRaceAudioBridge = (): (() => void) => {
   let prevStartLightCount = 0;
   let prevStartLightsGreen = false;
   let prevStartLightsOut = false;
-
-  const unlock = () => {
-    void unlockRaceAudio();
-  };
-  window.addEventListener("pointerdown", unlock, { once: true });
-  window.addEventListener("keydown", unlock, { once: true });
+  let lastSlice = selectRaceAudioSlice(useRaceStore.getState());
+  let audioRaf = 0;
 
   const handleSlice = (slice: RaceAudioSlice) => {
     setRaceAudioMuted(slice.audioMuted);
@@ -98,7 +99,7 @@ export const mountRaceAudioBridge = (): (() => void) => {
     }
     prevStartLightsOut = slice.startLightsOut;
 
-    syncRaceAudio({
+    void syncRaceAudio({
       phase: slice.phase,
       playerBoxing: slice.playerBoxing,
       pitPhase: phase,
@@ -118,7 +119,30 @@ export const mountRaceAudioBridge = (): (() => void) => {
     });
   };
 
-  let lastSlice = selectRaceAudioSlice(useRaceStore.getState());
+  const tryUnlockAndSync = () => {
+    void unlockRaceAudio().then((ok) => {
+      if (ok) handleSlice(lastSlice);
+    });
+  };
+
+  window.addEventListener("pointerdown", tryUnlockAndSync);
+  window.addEventListener("keydown", tryUnlockAndSync);
+
+  const onVisibility = () => {
+    if (document.visibilityState === "visible") tryUnlockAndSync();
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+
+  const pollEngineSpeed = () => {
+    const s = useRaceStore.getState();
+    if (s.phase === "racing" && !s.audioMuted) {
+      const player = getLiveRaceCars().find((c) => c.isPlayer);
+      if (player) syncEngineSpeed(player.speedMps);
+    }
+    audioRaf = requestAnimationFrame(pollEngineSpeed);
+  };
+  audioRaf = requestAnimationFrame(pollEngineSpeed);
+
   handleSlice(lastSlice);
 
   const unsub = useRaceStore.subscribe((s) => {
@@ -130,8 +154,10 @@ export const mountRaceAudioBridge = (): (() => void) => {
   });
 
   return () => {
-    window.removeEventListener("pointerdown", unlock);
-    window.removeEventListener("keydown", unlock);
+    cancelAnimationFrame(audioRaf);
+    window.removeEventListener("pointerdown", tryUnlockAndSync);
+    window.removeEventListener("keydown", tryUnlockAndSync);
+    document.removeEventListener("visibilitychange", onVisibility);
     unsub();
     disposeRaceAudio();
   };

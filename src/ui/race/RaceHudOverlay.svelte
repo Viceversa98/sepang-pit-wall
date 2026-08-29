@@ -47,6 +47,10 @@
   const handleCameraMode = (mode: CameraMode) => {
     useRaceStore.getState().setCameraMode(mode);
   };
+
+  const playerColor = $derived(
+    race.cars.find((c) => c.isPlayer)?.color ?? race.selectedPlayerColor,
+  );
 </script>
 
 {#if race.phase !== "landing"}
@@ -83,8 +87,10 @@
           type="button"
           class="rounded-sm px-2.5 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors {race.cameraMode ===
           'follow'
-            ? 'bg-rose-500/30 text-rose-100'
+            ? 'text-white'
             : 'text-slate-400 hover:text-slate-200'}"
+          style:background-color={race.cameraMode === "follow" ? `${playerColor}44` : undefined}
+          style:border={race.cameraMode === "follow" ? `1px solid ${playerColor}88` : undefined}
           aria-pressed={race.cameraMode === "follow"}
           aria-label="Follow YOU"
           onclick={() => handleCameraMode("follow")}

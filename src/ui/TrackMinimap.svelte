@@ -1,14 +1,25 @@
 <script lang="ts">
-  import { buildTrackMapLayout, progressToMap } from "@/lib/trackMap2d";
-  import { FIELD_META, useRaceStore } from "@/stores/raceStore";
+  import { sampleCarPose } from "@/lib/carPose";
+  import { getLiveRaceCars } from "@/lib/raceLiveCars";
+  import { buildTrackMapLayout, worldXZToMap } from "@/lib/trackMap2d";
+  import { gridSlotForCar, useRaceStore } from "@/stores/raceStore";
 
   let race = $state(useRaceStore.getState());
+  let liveCars = $state(getLiveRaceCars());
   const layout = buildTrackMapLayout();
 
   $effect(() => {
     return useRaceStore.subscribe((s) => {
       race = s;
     });
+  });
+
+  $effect(() => {
+    liveCars = getLiveRaceCars();
+    const id = window.setInterval(() => {
+      liveCars = getLiveRaceCars();
+    }, 100);
+    return () => window.clearInterval(id);
   });
 
   const pathD = $derived(
@@ -24,15 +35,17 @@
   );
 
   const carDots = $derived(
-    race.cars.map((car) => {
-      const meta = FIELD_META.find((m) => m.id === car.id);
-      const pos = progressToMap(car.lapProgress);
+    liveCars.map((car) => {
+      const gridIndex = gridSlotForCar(car);
+      const pose = sampleCarPose(car, race.phase, car.id, gridIndex);
+      const pos = worldXZToMap(pose.position.x, pose.position.z);
       return {
         id: car.id,
         x: pos.x * 100,
         y: pos.y * 100,
-        color: meta?.color ?? "#fff",
+        color: car.color,
         isPlayer: car.isPlayer,
+        retired: car.status === "retired",
       };
     }),
   );
@@ -51,13 +64,13 @@
   >
     <rect width="100" height="100" fill="#0a1628" rx="1" />
     <path
-      d={drsD}
+      d={pathD}
       fill="none"
-      stroke="#22d3ee"
-      stroke-width="2.8"
-      stroke-dasharray="3 2"
+      stroke="#64748b"
+      stroke-width="5.5"
       stroke-linecap="round"
-      opacity="0.75"
+      stroke-linejoin="round"
+      opacity="0.25"
     />
     <path
       d={pathD}
@@ -68,13 +81,13 @@
       stroke-linejoin="round"
     />
     <path
-      d={pathD}
+      d={drsD}
       fill="none"
-      stroke="#64748b"
-      stroke-width="5.5"
+      stroke="#22d3ee"
+      stroke-width="2.8"
+      stroke-dasharray="3 2"
       stroke-linecap="round"
-      stroke-linejoin="round"
-      opacity="0.25"
+      opacity="0.75"
     />
     {#each layout.turns as turn (turn.label)}
       <text
@@ -111,8 +124,9 @@
         cy={dot.y}
         r={dot.isPlayer ? 2.2 : 1.5}
         fill={dot.color}
-        stroke={dot.isPlayer ? "#fff" : "#0a1628"}
-        stroke-width={dot.isPlayer ? 0.6 : 0.35}
+        stroke={dot.retired ? "#facc15" : dot.isPlayer ? "#fff" : "#0a1628"}
+        stroke-width={dot.retired ? 0.9 : dot.isPlayer ? 0.6 : 0.35}
+        opacity={dot.retired ? 0.55 : 1}
       />
     {/each}
   </svg>

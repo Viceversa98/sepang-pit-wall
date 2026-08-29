@@ -6,7 +6,8 @@ import { quatFromTangent } from "@/lib/vehicleOrientation";
 import { stepCarVisual, type CarVisualPose } from "@/lib/carVisual";
 import { getLiveRaceCars } from "@/lib/raceLiveCars";
 import { buildTrack, type TrackBuildResult } from "@/scene/buildTrack";
-import { createF1CarMesh, updateF1CarBrakeLights, updateF1CarWheels } from "@/scene/F1CarMesh";
+import { createF1CarMesh, setF1CarBodyColor, updateF1CarBrakeLights, updateF1CarHazardLights, updateF1CarWheels } from "@/scene/F1CarMesh";
+import { isBrokenDownOnTrack } from "@/lib/raceTraffic";
 import {
   createFollowCameraState,
   updateFollowCamera,
@@ -23,10 +24,13 @@ import {
   sunLightColor,
   type AtmosphereHandle,
 } from "@/scene/atmosphere";
+import { createClouds, sampleRainInField, type CloudsHandle } from "@/scene/clouds";
 import { PitStopCrewField } from "@/scene/PitStopCrew";
 import { metresToUnits } from "@/lib/trackCurve";
 import {
   FIELD_META,
+  gridIndexForCar,
+  gridSlotForCar,
   PLAYER_ID,
   useRaceStore,
   type CameraMode,
@@ -34,7 +38,7 @@ import {
   type RacePhase,
 } from "@/stores/raceStore";
 
-const RAIN_COUNT = 800;
+const RAIN_COUNT = 3200;
 const OVERVIEW_HEIGHT = 100;
 const OVERVIEW_BACK = 85;
 
@@ -44,6 +48,8 @@ type CarEntry = {
   visualReady: boolean;
   gridIndex: number;
   isPlayer: boolean;
+  playerRing?: THREE.Mesh;
+  bodyColor: string;
 };
 
 export class RaceScene {
@@ -55,6 +61,9 @@ export class RaceScene {
   private cars = new Map<string, CarEntry>();
   private rainPoints!: THREE.Points;
   private rainPositions!: Float32Array;
+  private rainSpawnScratch = new THREE.Vector3();
+  private clouds!: CloudsHandle;
+  private elapsed = 0;
   private track!: TrackBuildResult;
   private startLights!: StartLightsGroup;
   private orbitControls: OrbitControls | null = null;
@@ -96,13 +105,19 @@ export class RaceScene {
     this.camera.position.set(0, 160, 140);
 
     this.atmosphere = createAtmosphere(this.scene, this.renderer, state.rainIntensity);
+    this.clouds = createClouds();
+    this.clouds.updateRain(state.rainIntensity);
+    this.scene.add(this.clouds.group);
     this.setupLights(state.rainIntensity);
     this.terrain = buildTerrain();
     this.scene.add(this.terrain.mesh);
 
     const playerPitBox =
       state.cars.find((c) => c.isPlayer)?.pitBoxIndex ?? state.selectedPitBoxIndex ?? 0;
-    this.track = buildTrack(state.rainIntensity, playerPitBox);
+    const playerColor =
+      state.cars.find((c) => c.isPlayer)?.color ?? state.selectedPlayerColor;
+
+    this.track = buildTrack(state.rainIntensity, playerPitBox, playerColor);
     this.scene.add(this.track.group);
     this.lastRainIntensity = state.rainIntensity;
 
@@ -122,22 +137,24 @@ export class RaceScene {
       const group = new THREE.Group();
       group.name = `car-${meta.id}`;
 
+      let playerRing: THREE.Mesh | undefined;
       if (meta.isPlayer) {
-        const ring = new THREE.Mesh(
+        playerRing = new THREE.Mesh(
           new THREE.RingGeometry(metresToUnits(1.15), metresToUnits(1.45), 28),
           new THREE.MeshBasicMaterial({
-            color: "#f43f5e",
+            color: playerColor,
             transparent: true,
             opacity: 0.5,
             toneMapped: false,
           }),
         );
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.y = metresToUnits(0.02);
-        group.add(ring);
+        playerRing.rotation.x = -Math.PI / 2;
+        playerRing.position.y = metresToUnits(0.02);
+        group.add(playerRing);
       }
 
-      const mesh = createF1CarMesh(meta.color, meta.isPlayer);
+      const meshColor = meta.isPlayer ? playerColor : meta.color;
+      const mesh = createF1CarMesh(meshColor, meta.isPlayer);
       group.add(mesh);
 
       this.scene.add(group);
@@ -145,8 +162,10 @@ export class RaceScene {
         group,
         visual: { lapProgress: 0, laneOffsetM: 0, pitProgress: 0 },
         visualReady: false,
-        gridIndex: FIELD_META.findIndex((c) => c.id === meta.id),
+        gridIndex: gridIndexForCar(meta.id),
         isPlayer: meta.isPlayer,
+        playerRing,
+        bodyColor: meshColor,
       });
     }
 
@@ -156,11 +175,12 @@ export class RaceScene {
     this.rainPoints = new THREE.Points(
       rainGeo,
       new THREE.PointsMaterial({
-        color: "#93c5fd",
-        size: 0.08,
+        color: "#bfdbfe",
+        size: 0.1,
         transparent: true,
-        opacity: 0.65,
+        opacity: 0.7,
         depthWrite: false,
+        sizeAttenuation: true,
       }),
     );
     this.rainPoints.visible = false;
@@ -193,12 +213,17 @@ export class RaceScene {
     // Racing: read per-frame sim state (60+ Hz) — the Svelte store only syncs at 20 Hz.
     const cars = state.phase === "racing" ? getLiveRaceCars() : state.cars;
 
+    this.elapsed += dt;
+
     if (state.rainIntensity !== this.lastRainIntensity) {
       this.track.setRainIntensity(state.rainIntensity);
       this.updateLighting(state.rainIntensity);
       this.atmosphere.updateRain(state.rainIntensity);
+      this.clouds.updateRain(state.rainIntensity);
       this.lastRainIntensity = state.rainIntensity;
     }
+
+    this.clouds.update(this.elapsed);
 
     this.updateCars(cars, state.phase, dt);
     this.campus.update(this.camera);
@@ -235,16 +260,15 @@ export class RaceScene {
       const player = cars.find((c) => c.isPlayer);
       const entry = this.cars.get(PLAYER_ID);
       if (player && entry) {
-        const smoothed = { ...player, ...entry.visual };
         updateFollowCamera(
           this.camera,
-          smoothed,
+          player,
           state.phase,
-          entry.gridIndex,
+          gridSlotForCar(player),
           state.cameraMode,
           dt,
           this.followState,
-          state.phase === "racing" ? entry.group : undefined,
+          entry.group,
         );
       }
     } else if (state.cameraMode === "overview") {
@@ -272,6 +296,7 @@ export class RaceScene {
     this.track.dispose();
     this.terrain.dispose();
     this.atmosphere.dispose();
+    this.clouds.dispose();
     this.campus.dispose();
     this.trackside.dispose();
     this.pitCrew.dispose();
@@ -340,17 +365,20 @@ export class RaceScene {
 
   private createRainPositions(): Float32Array {
     const arr = new Float32Array(RAIN_COUNT * 3);
-    let seed = 0x9e3779b9;
-    const nextRand = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 0xffffffff;
-    };
     for (let i = 0; i < RAIN_COUNT; i++) {
-      arr[i * 3] = (nextRand() - 0.5) * 280;
-      arr[i * 3 + 1] = nextRand() * 60;
-      arr[i * 3 + 2] = (nextRand() - 0.5) * 280;
+      sampleRainInField(this.rainSpawnScratch, true);
+      arr[i * 3] = this.rainSpawnScratch.x;
+      arr[i * 3 + 1] = this.rainSpawnScratch.y;
+      arr[i * 3 + 2] = this.rainSpawnScratch.z;
     }
     return arr;
+  }
+
+  private respawnRainDrop(arr: Float32Array, index: number): void {
+    sampleRainInField(this.rainSpawnScratch, false);
+    arr[index * 3] = this.rainSpawnScratch.x;
+    arr[index * 3 + 1] = this.rainSpawnScratch.y;
+    arr[index * 3 + 2] = this.rainSpawnScratch.z;
   }
 
   private updateRain(intensity: number, delta: number): void {
@@ -359,12 +387,16 @@ export class RaceScene {
       return;
     }
     this.rainPoints.visible = true;
+    const mat = this.rainPoints.material as THREE.PointsMaterial;
+    mat.opacity = 0.45 + intensity * 0.4;
+    mat.size = 0.08 + intensity * 0.06;
+
     const attrs = this.rainPoints.geometry.attributes.position as THREE.BufferAttribute;
     const arr = attrs.array as Float32Array;
-    const speed = 8 + intensity * 25;
+    const speed = 10 + intensity * 28;
     for (let i = 0; i < RAIN_COUNT; i++) {
       arr[i * 3 + 1] -= speed * delta;
-      if (arr[i * 3 + 1] < 0) arr[i * 3 + 1] = 50 + Math.random() * 10;
+      if (arr[i * 3 + 1] < 0) this.respawnRainDrop(arr, i);
     }
     attrs.needsUpdate = true;
   }
@@ -392,14 +424,13 @@ export class RaceScene {
         { ...car, ...smoothed },
         phase,
         meta.id,
-        entry.gridIndex,
+        gridSlotForCar(car),
         this.poseScratch,
       );
 
       entry.group.position.copy(pose.position);
       if (phase === "ready" || phase === "starting") {
-        // Match painted grid box yaw (+Z nose toward yellow front stripe).
-        entry.group.rotation.set(0, getGridSlot(entry.gridIndex).rotationY, 0);
+        entry.group.rotation.set(0, getGridSlot(car.gridSlot).rotationY, 0);
       } else {
         entry.group.quaternion.copy(quatFromTangent(pose.tangent, this.orientScratch));
       }
@@ -410,10 +441,25 @@ export class RaceScene {
         entry.group.rotateY(wobble);
       }
 
+      const brokenDown = isBrokenDownOnTrack(car);
+
       const mesh = entry.group.children.find((c) => c.name === "f1Car");
       if (mesh) {
-        updateF1CarBrakeLights(mesh, car.brakeIntensity);
-        updateF1CarWheels(mesh, car.speedMps, 0, dt);
+        if (meta.isPlayer && car.color !== entry.bodyColor) {
+          setF1CarBodyColor(mesh, car.color);
+          entry.bodyColor = car.color;
+          if (entry.playerRing) {
+            (entry.playerRing.material as THREE.MeshBasicMaterial).color.set(car.color);
+          }
+        }
+        mesh.rotation.z = brokenDown ? 0.12 : 0;
+        if (brokenDown) {
+          updateF1CarHazardLights(mesh, performance.now());
+          updateF1CarWheels(mesh, 0, 0, dt);
+        } else {
+          updateF1CarBrakeLights(mesh, car.brakeIntensity);
+          updateF1CarWheels(mesh, car.speedMps, 0, dt);
+        }
       }
     }
   }

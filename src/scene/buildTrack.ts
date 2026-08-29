@@ -72,7 +72,11 @@ const applyRainToAsphalt = (
   }
 };
 
-export const buildTrack = (rainIntensity: number, playerPitBox: number): TrackBuildResult => {
+export const buildTrack = (
+  rainIntensity: number,
+  playerPitBox: number,
+  playerColor = "#f43f5e",
+): TrackBuildResult => {
   const trackCurve = getTrackCurve();
   const pitCurve = getPitCurve();
   const heightSampler = (wx: number, wz: number) => sampleTerrainHeight(wx, wz);
@@ -245,7 +249,7 @@ export const buildTrack = (rainIntensity: number, playerPitBox: number): TrackBu
         stall.rotationY,
         metresToUnits(2.4),
         metresToUnits(5.5),
-        isPlayer ? "#f43f5e" : "#94a3b8",
+        isPlayer ? playerColor : "#94a3b8",
         0.04,
       ),
       createPaintStripe(
@@ -253,7 +257,7 @@ export const buildTrack = (rainIntensity: number, playerPitBox: number): TrackBu
         stall.rotationY,
         metresToUnits(2.4),
         edge * 1.2,
-        isPlayer ? "#fb7185" : "#facc15",
+        isPlayer ? playerColor : "#facc15",
         0.045,
       ),
     );

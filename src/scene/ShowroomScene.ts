@@ -20,20 +20,25 @@ export class ShowroomScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-    this.camera.position.set(4, 2.2, 5);
+    this.camera.position.set(3.1, 1.7, 3.9);
 
+    // Match RaceScene's dry-weather light rig so the livery reads the same
+    // color here as it does in the game.
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.38));
+    const key = new THREE.DirectionalLight(0xffffff, 1.45);
     key.position.set(4, 8, 6);
     scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.55);
+    fill.position.set(-5, 4, -4);
+    scene.add(fill);
 
     this.car = createF1CarMesh(color, true);
     scene.add(this.car);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enablePan = false;
-    this.controls.minDistance = 3;
+    this.controls.minDistance = 2.4;
     this.controls.maxDistance = 12;
     this.controls.target.set(0, 0.4, 0);
 
@@ -49,16 +54,14 @@ export class ShowroomScene {
     };
     this.frameId = requestAnimationFrame(loop);
 
+    // Recolor only the body livery — repainting every non-white material
+    // turned carbon, wings and tyres into the player color, which is why the
+    // showroom car didn't match the in-game one.
     useRaceStore.subscribe((state) => {
-      const mesh = this.car;
-      if (!mesh) return;
-      mesh.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return;
-        const mat = child.material;
-        if (!(mat instanceof THREE.MeshStandardMaterial)) return;
-        if (mat.color.getHexString() === "ffffff") return;
-        mat.color.set(state.selectedPlayerColor);
-      });
+      const bodyMat = this.car?.userData.bodyMat as THREE.MeshStandardMaterial | undefined;
+      if (!bodyMat) return;
+      bodyMat.color.set(state.selectedPlayerColor);
+      bodyMat.emissive.set(state.selectedPlayerColor);
     });
   }
 

@@ -137,14 +137,14 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
   {
     id: "k1",
     kit: "covered",
-    /** OSM world anchor — end of main straight / T1. */
+    /** Covered stand outside Turn 1 (right-hander — driver-left / -bank side). */
     t: 0.107,
     bank: -1,
-    lateralClearanceM: 0,
+    lateralClearanceM: 22,
     sizeM: { x: 14, y: 12, z: 55 },
     alongM: 0,
-    fixedWorld: { x: 19.246, z: 134.17 },
-    yawOverride: -1.55,
+    tSpanM: 55,
+    segmentCount: 2,
     shadow: "cast",
     lod: "mid",
   },

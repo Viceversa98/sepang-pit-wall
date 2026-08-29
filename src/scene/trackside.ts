@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { getTrackCurve, metresToUnits } from "@/lib/trackCurve";
+import { getPitCurve, getTrackCurve, metresToUnits } from "@/lib/trackCurve";
 import { sampleTerrainHeight } from "@/lib/terrainHeight";
 
 /**
@@ -160,7 +160,46 @@ const runIndices = (start: number, end: number): number[] => {
   return Array.from({ length: len }, (_, j) => (start + j) % SAMPLES);
 };
 
-/** Vertical ribbon (wall / fence) along a run at a fixed lateral offset. */
+type ClearanceTest = (x: number, z: number, minDistM: number) => boolean;
+
+/**
+ * Sepang loops back on itself, so an offset from one section can land on
+ * another section (or the pit lane). This tests a world point against every
+ * centerline sample of both the race track and the pit complex.
+ */
+const buildClearanceTest = (samples: TrackSample[]): ClearanceTest => {
+  const pts: number[] = [];
+  for (const s of samples) pts.push(s.point.x, s.point.z);
+  const pit = getPitCurve();
+  const PIT_PTS = 140;
+  for (let i = 0; i <= PIT_PTS; i += 1) {
+    const p = pit.getPointAt(i / PIT_PTS);
+    pts.push(p.x, p.z);
+  }
+  return (x, z, minDistM) => {
+    const r = metresToUnits(minDistM);
+    const r2 = r * r;
+    for (let i = 0; i < pts.length; i += 2) {
+      const dx = pts[i] - x;
+      const dz = pts[i + 1] - z;
+      if (dx * dx + dz * dz < r2) return false;
+    }
+    return true;
+  };
+};
+
+/** Min distance (m) between a ribbon vertex and any track/pit centerline. */
+const RIBBON_CLEAR_M = 12;
+/** Min distance (m) for point objects (boards, tires, marshals, posts). */
+const OBJECT_CLEAR_M = 13;
+/** Palm canopies are wide — keep them further out. */
+const TREE_CLEAR_M = 17;
+
+/**
+ * Vertical ribbon (wall / fence) along a run at a fixed lateral offset.
+ * Samples that fail the clearance test are skipped, leaving gaps instead of
+ * walls crossing another part of the circuit.
+ */
 const buildVerticalRibbon = (
   samples: TrackSample[],
   indices: number[],
@@ -169,23 +208,30 @@ const buildVerticalRibbon = (
   baseLift: number,
   heightM: number,
   uPerSample: number,
+  clear?: ClearanceTest,
 ): THREE.BufferGeometry => {
   const positions: number[] = [];
   const uvs: number[] = [];
   const tris: number[] = [];
   const h = metresToUnits(heightM);
   const p = new THREE.Vector3();
+  let prevPair = -1;
 
   for (let j = 0; j < indices.length; j += 1) {
     const s = samples[indices[j]];
     lateralPos(s, lateralM, sign, p);
+    if (clear && !clear(p.x, p.z, RIBBON_CLEAR_M)) {
+      prevPair = -1;
+      continue;
+    }
     const yBase = p.y + baseLift;
+    const pair = positions.length / 3;
     positions.push(p.x, yBase, p.z, p.x, yBase + h, p.z);
     uvs.push(j * uPerSample, 0, j * uPerSample, 1);
-    if (j > 0) {
-      const a = (j - 1) * 2;
-      tris.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    if (prevPair >= 0) {
+      tris.push(prevPair, prevPair + 1, pair, prevPair + 1, pair + 1, pair);
     }
+    prevPair = pair;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -196,7 +242,7 @@ const buildVerticalRibbon = (
   return geo;
 };
 
-/** Flat ground ribbon between two lateral offsets along a run. */
+/** Flat ground ribbon between two lateral offsets along a run, with gaps. */
 const buildFlatRibbon = (
   samples: TrackSample[],
   indices: number[],
@@ -205,23 +251,30 @@ const buildFlatRibbon = (
   outerM: number,
   yLift: number,
   uPerSample: number,
+  clear?: ClearanceTest,
 ): THREE.BufferGeometry => {
   const positions: number[] = [];
   const uvs: number[] = [];
   const tris: number[] = [];
   const pi = new THREE.Vector3();
   const po = new THREE.Vector3();
+  let prevPair = -1;
 
   for (let j = 0; j < indices.length; j += 1) {
     const s = samples[indices[j]];
     lateralPos(s, innerM, sign, pi);
     lateralPos(s, outerM, sign, po);
+    if (clear && (!clear(po.x, po.z, RIBBON_CLEAR_M) || !clear(pi.x, pi.z, RIBBON_CLEAR_M))) {
+      prevPair = -1;
+      continue;
+    }
+    const pair = positions.length / 3;
     positions.push(pi.x, pi.y + yLift, pi.z, po.x, po.y + yLift, po.z);
     uvs.push(j * uPerSample, 0, j * uPerSample, 1);
-    if (j > 0) {
-      const a = (j - 1) * 2;
-      tris.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    if (prevPair >= 0) {
+      tris.push(prevPair, prevPair + 1, pair, prevPair + 1, pair + 1, pair);
     }
+    prevPair = pair;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -356,6 +409,7 @@ const faceTrackYaw = (sample: TrackSample, sign: number): number => {
 export const buildTrackside = (): TracksideHandle => {
   const samples = buildSamples();
   const corners = findCornerRuns(samples);
+  const clear = buildClearanceTest(samples);
   const rng = mulberry32(1337);
   const group = new THREE.Group();
   group.name = "trackside";
@@ -387,7 +441,7 @@ export const buildTrackside = (): TracksideHandle => {
   ];
   for (const { indices, sign } of barrierRuns) {
     const geo = track(
-      buildVerticalRibbon(samples, indices, sign, BARRIER_M, -0.06, BARRIER_H_M, 2.2),
+      buildVerticalRibbon(samples, indices, sign, BARRIER_M, -0.06, BARRIER_H_M, 2.2, clear),
     );
     const mesh = new THREE.Mesh(geo, barrierMat);
     mesh.receiveShadow = true;
@@ -405,12 +459,15 @@ export const buildTrackside = (): TracksideHandle => {
       side: THREE.DoubleSide,
     }),
   );
+  // Fence only on the grandstand side — the pit complex owns the other side,
+  // and a fence there would cut across the pit lane.
+  const fenceSign = -PIT_SIDE;
   const fenceStart = Math.floor(0.94 * SAMPLES);
   const fenceEnd = Math.floor(0.065 * SAMPLES);
   const fenceIndices = runIndices(fenceStart, fenceEnd);
-  for (const sign of [1, -1]) {
+  {
     const geo = track(
-      buildVerticalRibbon(samples, fenceIndices, sign, FENCE_M, 0, FENCE_H_M, 4),
+      buildVerticalRibbon(samples, fenceIndices, fenceSign, FENCE_M, 0, FENCE_H_M, 4, clear),
     );
     const mesh = new THREE.Mesh(geo, fenceMat);
     group.add(mesh);
@@ -423,13 +480,12 @@ export const buildTrackside = (): TracksideHandle => {
     new THREE.MeshStandardMaterial({ color: "#475569", roughness: 0.6, metalness: 0.5 }),
   );
   const postMatrices: THREE.Matrix4[] = [];
-  for (const sign of [1, -1]) {
-    for (let j = 0; j < fenceIndices.length; j += 2) {
-      const s = samples[fenceIndices[j]];
-      lateralPos(s, FENCE_M, sign, scratch);
-      scratch.y += metresToUnits(FENCE_H_M) / 2;
-      postMatrices.push(composeMatrix(scratch, 0, 1));
-    }
+  for (let j = 0; j < fenceIndices.length; j += 2) {
+    const s = samples[fenceIndices[j]];
+    lateralPos(s, FENCE_M, fenceSign, scratch);
+    if (!clear(scratch.x, scratch.z, RIBBON_CLEAR_M)) continue;
+    scratch.y += metresToUnits(FENCE_H_M) / 2;
+    postMatrices.push(composeMatrix(scratch, 0, 1));
   }
   const posts = new THREE.InstancedMesh(postGeo, postMat, postMatrices.length);
   setInstances(posts, postMatrices);
@@ -478,6 +534,7 @@ export const buildTrackside = (): TracksideHandle => {
       if (inPitZone(s.t) && corner.outSign === PIT_SIDE) continue;
       const lateral = TIRE_M + rng() * 1.6;
       lateralPos(s, lateral, corner.outSign, scratch);
+      if (!clear(scratch.x, scratch.z, OBJECT_CLEAR_M)) continue;
       scratch.y += metresToUnits(1.35) / 2;
       tireMatrices.push(composeMatrix(scratch, rng() * Math.PI, 1));
       scratch.y += metresToUnits(0.35);
@@ -511,6 +568,7 @@ export const buildTrackside = (): TracksideHandle => {
     boardCursor += 1;
     if (sign === PIT_SIDE && inPitZone(s.t)) continue;
     lateralPos(s, BOARD_M, sign, scratch);
+    if (!clear(scratch.x, scratch.z, OBJECT_CLEAR_M)) continue;
     scratch.y += metresToUnits(1.35) / 2 + 0.02;
     boardMatrixSets[boardCursor % boardDesigns.length].push(
       composeMatrix(scratch, faceTrackYaw(s, sign), 1),
@@ -562,6 +620,7 @@ export const buildTrackside = (): TracksideHandle => {
     if (inPitZone(s.t) && corner.outSign === PIT_SIDE) continue;
     const yaw = faceTrackYaw(s, corner.outSign);
     lateralPos(s, MARSHAL_M, corner.outSign, scratch);
+    if (!clear(scratch.x, scratch.z, OBJECT_CLEAR_M + 2)) continue;
     const base = scratch.clone();
     scratch.y = base.y + metresToUnits(1.3);
     hutMatrices.push(composeMatrix(scratch, yaw, 1));
@@ -622,6 +681,7 @@ export const buildTrackside = (): TracksideHandle => {
     lateralPos(s, lateral, sign, scratch);
     // Jitter along the tangent so rows don't look sampled.
     scratch.addScaledVector(s.tangent, (rng() - 0.5) * metresToUnits(14));
+    if (!clear(scratch.x, scratch.z, TREE_CLEAR_M)) continue;
     scratch.y = groundY(scratch.x, scratch.z);
     const base = scratch.clone();
     scratch.y = base.y + metresToUnits(9.5 * scale) / 2;

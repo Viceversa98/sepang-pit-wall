@@ -6,15 +6,16 @@ import {
   type WeatherOverride,
 } from "@/lib/weather";
 import { FIA, PIT_ENTRY_T, PIT_EXIT_T, TRACK_LENGTH_M } from "@/lib/trackCurve";
-import { gridLaneOffsetM, resolveTraffic, standingsDistance } from "@/lib/raceTraffic";
+import { gridLaneOffsetM, nearestCarAhead, raceDistance, resolveTraffic, standingsDistance } from "@/lib/raceTraffic";
 import {
   availableGrip,
   baseWearRatePerSec,
-  integrateSpeed,
+  integrateSpeedInto,
   SEPANG_AVG_SPEED_MPS,
   targetSpeedMps,
   type CarPhysicsStatus,
   type IncidentKind,
+  type IntegrateResult,
 } from "@/lib/racePhysics";
 import {
   applyServiceComplete,
@@ -31,7 +32,7 @@ import {
   type PitPhase,
 } from "@/lib/pitStop";
 import { emitRaceSnapshot, resetMissionSnapshotPrev } from "@/lib/academy/missionBridge";
-import { setLiveRaceCars } from "@/lib/raceLiveCars";
+import { getLiveRaceCars, setLiveRaceCars } from "@/lib/raceLiveCars";
 import { getRaceSimShared } from "@/sim/raceSimContext";
 import {
   vehicleBaseIndex,
@@ -85,6 +86,8 @@ export type CarState = {
   pitPhase: PitPhase | null;
   pitStopElapsed: number;
   pitBoxIndex: number;
+  /** FIA grid slot 0 = pole … 9 = back row (from pit stall pick on landing). */
+  gridSlot: number;
   pitHoldTraffic: boolean;
   pitServiceDone: boolean;
   unsafeReleasePenaltyMs: number;
@@ -123,6 +126,8 @@ export type CarState = {
   incidentKind: IncidentKind;
   /** 0–1 brake demand for rear light visuals. */
   brakeIntensity: number;
+  /** True after the grid ghost lap wraps at S/F — first wrap never counts. */
+  sfCrossedOnce: boolean;
 };
 
 export type StandingsRow = {
@@ -137,6 +142,8 @@ export type StandingsRow = {
   tireWear: number;
   compound: TyreCompound;
   finished: boolean;
+  /** DNF / incident status for timing tower. */
+  carStatus: CarPhysicsStatus;
 };
 
 type RaceStore = {
@@ -189,6 +196,7 @@ type RaceStore = {
   resetToLanding: () => void;
   setPlayerLivery: (color: string) => void;
   setPlayerPitBox: (index: number) => void;
+  setTotalLaps: (laps: number) => void;
   setCompound: (compound: TyreCompound) => void;
   setEngineMode: (mode: EngineMode) => void;
   requestBoxNextLap: () => void;
@@ -245,6 +253,32 @@ export const FIELD_META = [
   { id: "r9", name: "BN-09", color: "#c084fc", isPlayer: false },
 ] as const;
 
+const CAR_INDEX_BY_ID = new Map<string, number>(
+  FIELD_META.map((m, i) => [m.id, i]),
+);
+
+/** Stable grid slot index for a car id (matches GRID / FIELD_META order). */
+export const gridIndexForCar = (carId: string): number => CAR_INDEX_BY_ID.get(carId) ?? 0;
+
+/** Starting grid slot — pit stall pick sets player slot; AI use FIELD_META order fallback. */
+export const gridSlotForCar = (car: Pick<CarState, "id" | "gridSlot">): number =>
+  car.gridSlot ?? gridIndexForCar(car.id);
+
+export const RACE_LAP_OPTIONS = [3, 5, 6, 10, 12] as const;
+
+/** Reused every car, every frame — avoids 10 IntegrateResult allocations per tick. */
+const PHYS_SCRATCH: IntegrateResult = {
+  speedMps: 0,
+  status: "racing",
+  damage: 0,
+  incidentTimer: 0,
+  incidentKind: null,
+  tireWear: 100,
+  extraWear: 0,
+  grip: 1,
+  brakeIntensity: 0,
+};
+
 const GRID: Omit<
   CarState,
   | "lapProgress"
@@ -257,6 +291,7 @@ const GRID: Omit<
   | "pitPhase"
   | "pitStopElapsed"
   | "pitBoxIndex"
+  | "gridSlot"
   | "pitHoldTraffic"
   | "pitServiceDone"
   | "unsafeReleasePenaltyMs"
@@ -278,6 +313,7 @@ const GRID: Omit<
   | "incidentTimer"
   | "incidentKind"
   | "brakeIntensity"
+  | "sfCrossedOnce"
 >[] = [
   { id: PLAYER_ID, name: "YOU", color: "#f43f5e", isPlayer: true, currentCompound: "medium", engineMode: "standard" },
   { id: "r1", name: "KD-01", color: "#38bdf8", isPlayer: false, currentCompound: "soft", engineMode: "push" },
@@ -293,6 +329,12 @@ const GRID: Omit<
 
 const createGrid = (playerColor: string, playerPitBox: number): CarState[] => {
   const pitBox = Math.max(0, Math.min(PIT_STALL_COUNT - 1, Math.floor(playerPitBox)));
+  /** Pit stall N → start on grid row N (stall 8 = P8, not pole). */
+  const playerGridSlot = pitBox;
+  const aiGridSlots = Array.from({ length: GRID.length }, (_, i) => i).filter(
+    (i) => i !== playerGridSlot,
+  );
+
   const used = new Set<number>([pitBox]);
   let cursor = 0;
   const nextFreePit = (): number => {
@@ -303,17 +345,19 @@ const createGrid = (playerColor: string, playerPitBox: number): CarState[] => {
     return i;
   };
 
-  return GRID.map((car, index) => {
-    const behindM = FIA.gridFrontGapM + index * FIA.gridRowSpacingM;
+  let aiSlotIdx = 0;
+  return GRID.map((car) => {
+    const gridSlot = car.isPlayer ? playerGridSlot : aiGridSlots[aiSlotIdx++]!;
+    const behindM = FIA.gridFrontGapM + gridSlot * FIA.gridRowSpacingM;
     const lapProgress = ((1 - behindM / TRACK_LENGTH_M) % 1 + 1) % 1;
-    const lane = gridLaneOffsetM(index);
+    const lane = gridLaneOffsetM(gridSlot);
     const pitBoxIndex = car.isPlayer ? pitBox : nextFreePit();
     return {
       ...car,
       color: car.isPlayer ? playerColor : car.color,
       lapProgress,
       currentLap: 1,
-      tireWear: 100 - index * 0.5,
+      tireWear: 100 - gridSlot * 0.5,
       isBoxing: false,
       pendingBox: false,
       pendingCompound: null,
@@ -321,6 +365,7 @@ const createGrid = (playerColor: string, playerPitBox: number): CarState[] => {
       pitPhase: null,
       pitStopElapsed: 0,
       pitBoxIndex,
+      gridSlot,
       pitHoldTraffic: false,
       pitServiceDone: false,
       unsafeReleasePenaltyMs: 0,
@@ -342,9 +387,31 @@ const createGrid = (playerColor: string, playerPitBox: number): CarState[] => {
       incidentTimer: 0,
       incidentKind: null,
       brakeIntensity: 0,
+      sfCrossedOnce: false,
     };
   });
 };
+
+/** Apply grid/stint choices before lights out — not a pit stop. */
+const applyPlayerGridStint = (
+  cars: CarState[],
+  compound: TyreCompound,
+  engineMode: EngineMode,
+): CarState[] =>
+  cars.map((car) =>
+    car.isPlayer
+      ? {
+          ...car,
+          currentCompound: compound,
+          engineMode,
+          pendingCompound: null,
+          pendingBox: false,
+        }
+      : car,
+  );
+
+const isPreRaceSetup = (phase: RacePhase): boolean =>
+  phase === "landing" || phase === "ready";
 
 const pickAiCompound = (rain: number, tireWear: number): TyreCompound => {
   if (rain >= 0.65) return "wet";
@@ -363,7 +430,7 @@ const needsWetStrategyBox = (car: CarState, rain: number): boolean => {
   return false;
 };
 
-/** Ignore S/F wraps before this — grid sits at t≈0.998 so lights-out would ghost-lap. */
+/** Ignore ultra-short S/F wraps (pit teleport glitches). Grid ghost lap uses sfCrossedOnce. */
 const MIN_LAP_MS = 2500;
 
 export const resolveTargetMps = (
@@ -411,7 +478,9 @@ const buildStandings = (
   const leader = sorted[0];
   return sorted.map((car, i) => {
     let gapLabel = "LEADER";
-    if (i > 0) {
+    if (car.status === "retired") {
+      gapLabel = "OUT";
+    } else if (i > 0) {
       if (raceComplete(car) && raceComplete(leader)) {
         const gap = ((car.finishTimeMs - leader.finishTimeMs) / 1000).toFixed(2);
         gapLabel = `+${gap}s`;
@@ -428,7 +497,7 @@ const buildStandings = (
     }
     return {
       id: car.id,
-      name: car.name,
+      name: car.isPlayer ? `YOU · #${car.pitBoxIndex + 1}` : car.name,
       color: car.color,
       isPlayer: car.isPlayer,
       position: i + 1,
@@ -438,6 +507,7 @@ const buildStandings = (
       tireWear: car.tireWear,
       compound: car.currentCompound,
       finished: raceComplete(car),
+      carStatus: car.status,
     };
   });
 };
@@ -550,6 +620,14 @@ const clearStartTimers = () => {
 const DEFAULT_PLAYER_COLOR = PLAYER_LIVERIES[0].color;
 const DEFAULT_PIT_BOX = 0;
 
+const rebuildPreRaceGrid = (
+  color: string,
+  pitBox: number,
+  compound: TyreCompound,
+  engineMode: EngineMode,
+): CarState[] =>
+  applyPlayerGridStint(createGrid(color, pitBox), compound, engineMode);
+
 const buildGridFromSelection = (
   color: string = DEFAULT_PLAYER_COLOR,
   pitBox: number = DEFAULT_PIT_BOX,
@@ -557,6 +635,21 @@ const buildGridFromSelection = (
 
 const initialCars = buildGridFromSelection();
 setLiveRaceCars(initialCars);
+
+/**
+ * Mutate cars through the LIVE per-frame array (the sim's source of truth),
+ * commit it, and return it for the store snapshot. Mapping over `state.cars`
+ * would edit a stale 20 Hz UI snapshot and the sim would never see the change.
+ */
+const mutateCars = (
+  fn: (car: CarState, cars: CarState[]) => CarState,
+): CarState[] => {
+  const live = getLiveRaceCars();
+  for (let i = 0; i < live.length; i += 1) {
+    Object.assign(live[i], fn(live[i], live));
+  }
+  return live;
+};
 
 export const useRaceStore = createStore<RaceStore>((set, get) => ({
   phase: "landing",
@@ -602,8 +695,13 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
     clearStartTimers();
     simElapsedMs = 0;
     uiSyncAccum = 0;
-    const { selectedPlayerColor, selectedPitBoxIndex, totalLaps } = get();
-    const cars = createGrid(selectedPlayerColor, selectedPitBoxIndex);
+    const { selectedPlayerColor, selectedPitBoxIndex, totalLaps, currentCompound, engineMode } =
+      get();
+    const cars = applyPlayerGridStint(
+      createGrid(selectedPlayerColor, selectedPitBoxIndex),
+      currentCompound,
+      engineMode,
+    );
     setLiveRaceCars(cars);
     get().stop();
     set({
@@ -658,8 +756,13 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
     uiSyncAccum = 0;
     get().stop();
     resetMissionSnapshotPrev();
-    const { selectedPlayerColor, selectedPitBoxIndex, totalLaps } = get();
-    const cars = createGrid(selectedPlayerColor, selectedPitBoxIndex);
+    const { selectedPlayerColor, selectedPitBoxIndex, totalLaps, currentCompound, engineMode } =
+      get();
+    const cars = applyPlayerGridStint(
+      createGrid(selectedPlayerColor, selectedPitBoxIndex),
+      currentCompound,
+      engineMode,
+    );
     setLiveRaceCars(cars);
     set({
       phase: "ready",
@@ -696,12 +799,48 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   },
 
   setPlayerLivery: (color) => {
-    set({ selectedPlayerColor: color });
+    set((s) => {
+      const isPreRace = s.phase === "landing" || s.phase === "ready";
+      const cars = isPreRace
+        ? rebuildPreRaceGrid(color, s.selectedPitBoxIndex, s.currentCompound, s.engineMode)
+        : s.cars.map((car) => (car.isPlayer ? { ...car, color } : car));
+      if (isPreRace) setLiveRaceCars(cars);
+      return {
+        selectedPlayerColor: color,
+        cars,
+        standings: buildStandings(cars, s.totalLaps, s.phase),
+        ...(isPreRace ? syncPlayerMirrors(cars, s.rainIntensity) : {}),
+      };
+    });
   },
 
   setPlayerPitBox: (index) => {
     const pit = Math.max(0, Math.min(PIT_STALL_COUNT - 1, Math.floor(index)));
-    set({ selectedPitBoxIndex: pit });
+    set((s) => {
+      const isPreRace = s.phase === "landing" || s.phase === "ready";
+      if (!isPreRace) return { selectedPitBoxIndex: pit };
+      const cars = rebuildPreRaceGrid(
+        s.selectedPlayerColor,
+        pit,
+        s.currentCompound,
+        s.engineMode,
+      );
+      setLiveRaceCars(cars);
+      return {
+        selectedPitBoxIndex: pit,
+        cars,
+        standings: buildStandings(cars, s.totalLaps, s.phase),
+        ...syncPlayerMirrors(cars, s.rainIntensity),
+      };
+    });
+  },
+
+  setTotalLaps: (laps) => {
+    const totalLaps = Math.max(1, Math.min(12, Math.floor(laps)));
+    set((s) => ({
+      totalLaps,
+      standings: buildStandings(s.cars, totalLaps, s.phase),
+    }));
   },
 
   goRacing: () => {
@@ -741,16 +880,15 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
     simElapsedMs = 0;
     get().stop();
     resetMissionSnapshotPrev();
-    const { selectedPlayerColor, selectedPitBoxIndex } = get();
+    const { selectedPlayerColor, selectedPitBoxIndex, totalLaps } = get();
     const cars = createGrid(selectedPlayerColor, selectedPitBoxIndex);
     setLiveRaceCars(cars);
     set({
       phase: "landing",
       playMode: "free",
-      totalLaps: TOTAL_LAPS,
       elapsedMs: 0,
       cars,
-      standings: buildStandings(cars, TOTAL_LAPS, "landing"),
+      standings: buildStandings(cars, totalLaps, "landing"),
       winnerId: null,
       startLightCount: 0,
       startLightsGreen: false,
@@ -768,28 +906,36 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   },
 
   setCompound: (compound) => {
-    set((state) => {
-      const cars = state.cars.map((car) => {
-        if (!car.isPlayer) return car;
-        if (car.pendingBox || car.isBoxing) {
-          return { ...car, pendingCompound: compound };
-        }
-        // Stint compound change requires a box
-        return { ...car, pendingCompound: compound, pendingBox: true };
-      });
-      return {
-        cars,
-        ...syncPlayerMirrors(cars),
-        standings: buildStandings(cars, state.totalLaps, state.phase),
-      };
+    const phase = get().phase;
+    const cars = mutateCars((car) => {
+      if (!car.isPlayer) return car;
+      if (isPreRaceSetup(phase)) {
+        return {
+          ...car,
+          currentCompound: compound,
+          pendingCompound: null,
+          pendingBox: false,
+        };
+      }
+      if (car.pendingBox || car.isBoxing) {
+        return { ...car, pendingCompound: compound };
+      }
+      // Stint compound change requires a box
+      return { ...car, pendingCompound: compound, pendingBox: true };
     });
+    set((state) => ({
+      cars,
+      ...syncPlayerMirrors(cars, state.rainIntensity),
+      standings: buildStandings(cars, state.totalLaps, state.phase),
+    }));
   },
 
   setEngineMode: (mode) => {
-    set((state) => {
-      const cars = state.cars.map((car) => (car.isPlayer ? { ...car, engineMode: mode } : car));
-      return { cars, ...syncPlayerMirrors(cars) };
-    });
+    const cars = mutateCars((car) => (car.isPlayer ? { ...car, engineMode: mode } : car));
+    set((state) => ({
+      cars,
+      ...syncPlayerMirrors(cars, state.rainIntensity),
+    }));
   },
 
   setCameraMode: (mode) => {
@@ -810,34 +956,30 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   },
 
   requestBoxNextLap: () => {
-    set((state) => {
-      const cars = state.cars.map((car) => {
-        if (!car.isPlayer) return car;
-        return {
-          ...car,
-          pendingBox: true,
-          pendingCompound: car.pendingCompound ?? car.currentCompound,
-        };
-      });
-      return { cars, ...syncPlayerMirrors(cars) };
+    const cars = mutateCars((car) => {
+      if (!car.isPlayer) return car;
+      return {
+        ...car,
+        pendingBox: true,
+        pendingCompound: car.pendingCompound ?? car.currentCompound,
+      };
     });
+    set({ cars, ...syncPlayerMirrors(cars) });
   },
 
   releaseFromBox: () => {
-    set((state) => {
-      const cars = state.cars.map((car) => {
-        if (!car.isPlayer || !car.isBoxing || car.pitPhase !== "stopped" || !car.pitServiceDone) {
-          return car;
-        }
-        const unsafe = isPitReleaseBlocked(state.cars, car);
-        return beginPitExit(car, unsafe);
-      });
-      return {
-        cars,
-        ...syncPlayerMirrors(cars),
-        standings: buildStandings(cars, state.totalLaps, state.phase),
-      };
+    const cars = mutateCars((car, all) => {
+      if (!car.isPlayer || !car.isBoxing || car.pitPhase !== "stopped" || !car.pitServiceDone) {
+        return car;
+      }
+      const unsafe = isPitReleaseBlocked(all, car);
+      return beginPitExit(car, unsafe);
     });
+    set((state) => ({
+      cars,
+      ...syncPlayerMirrors(cars),
+      standings: buildStandings(cars, state.totalLaps, state.phase),
+    }));
   },
 
   setWeatherOverride: (override) => {
@@ -953,47 +1095,43 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   },
 
   forcePlayerWear: (wear) => {
-    set((state) => {
-      const cars = state.cars.map((car) =>
-        car.isPlayer
-          ? {
-              ...car,
-              tireWear: Math.max(0, Math.min(100, wear)),
-              pendingBox: true,
-              pendingCompound: car.pendingCompound ?? car.currentCompound,
-            }
-          : car,
-      );
-      return { cars, ...syncPlayerMirrors(cars) };
-    });
+    const cars = mutateCars((car) =>
+      car.isPlayer
+        ? {
+            ...car,
+            tireWear: Math.max(0, Math.min(100, wear)),
+            pendingBox: true,
+            pendingCompound: car.pendingCompound ?? car.currentCompound,
+          }
+        : car,
+    );
+    set({ cars, ...syncPlayerMirrors(cars) });
   },
 
   spawnPitTraffic: () => {
-    set((state) => {
-      const player = state.cars.find((c) => c.isPlayer);
-      if (!player?.isBoxing) return state;
-      const boxT = pitBoxTFor(player);
-      let spawned = false;
-      const withOne = state.cars.map((car) => {
-        if (car.isPlayer || spawned) return car;
-        spawned = true;
-        return {
-          ...car,
-          isBoxing: true,
-          pendingBox: false,
-          pitPhase: "out" as PitPhase,
-          pitProgress: Math.min(0.95, boxT + 0.04),
-          pitHoldTraffic: false,
-          pitServiceDone: true,
-          pitStopElapsed: PIT_STOP_DURATION_S,
-        };
-      });
+    const player = getLiveRaceCars().find((c) => c.isPlayer);
+    if (!player?.isBoxing) return;
+    const boxT = pitBoxTFor(player);
+    let spawned = false;
+    const cars = mutateCars((car) => {
+      if (car.isPlayer || spawned) return car;
+      spawned = true;
       return {
-        cars: withOne,
-        ...syncPlayerMirrors(withOne),
-        standings: buildStandings(withOne, state.totalLaps, state.phase),
+        ...car,
+        isBoxing: true,
+        pendingBox: false,
+        pitPhase: "out" as PitPhase,
+        pitProgress: Math.min(0.95, boxT + 0.04),
+        pitHoldTraffic: false,
+        pitServiceDone: true,
+        pitStopElapsed: PIT_STOP_DURATION_S,
       };
     });
+    set((state) => ({
+      cars,
+      ...syncPlayerMirrors(cars),
+      standings: buildStandings(cars, state.totalLaps, state.phase),
+    }));
   },
 
   setDrsEnabled: (on) => {
@@ -1008,29 +1146,28 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
 
   addPlayerPenalty: (kind) => {
     const ms = PENALTY_MS[kind] ?? 0;
-    set((state) => {
-      const cars = state.cars.map((car) =>
-        car.isPlayer ? { ...car, timePenaltyMs: car.timePenaltyMs + ms } : car,
-      );
-      const playerPenalties = [...state.playerPenalties, kind];
-      return { cars, playerPenalties, ...syncPlayerMirrors(cars) };
-    });
+    const cars = mutateCars((car) =>
+      car.isPlayer ? { ...car, timePenaltyMs: car.timePenaltyMs + ms } : car,
+    );
+    set((state) => ({
+      cars,
+      playerPenalties: [...state.playerPenalties, kind],
+      ...syncPlayerMirrors(cars),
+    }));
   },
 
   releasePlayerForced: (unsafe) => {
-    set((state) => {
-      const cars = state.cars.map((car) => {
-        if (!car.isPlayer || !car.isBoxing || car.pitPhase !== "stopped" || !car.pitServiceDone) {
-          return car;
-        }
-        return beginPitExit(car, unsafe);
-      });
-      return {
-        cars,
-        ...syncPlayerMirrors(cars),
-        standings: buildStandings(cars, state.totalLaps, state.phase),
-      };
+    const cars = mutateCars((car) => {
+      if (!car.isPlayer || !car.isBoxing || car.pitPhase !== "stopped" || !car.pitServiceDone) {
+        return car;
+      }
+      return beginPitExit(car, unsafe);
     });
+    set((state) => ({
+      cars,
+      ...syncPlayerMirrors(cars),
+      standings: buildStandings(cars, state.totalLaps, state.phase),
+    }));
   },
 
   abortStartSequence: () => {
@@ -1073,215 +1210,212 @@ export const stepRaceSimulation = (dt: number): void => {
   const drsOn = state.drsEnabled && control === "green";
 
   const shared = getRaceSimShared();
-  const carIndexById = new Map<string, number>(FIELD_META.map((m, i) => [m.id, i]));
 
   const writePhysicsTarget = (next: CarState, targetMps: number): void => {
     if (!shared) return;
-    const index = carIndexById.get(next.id);
+    const index = CAR_INDEX_BY_ID.get(next.id);
     if (index === undefined) return;
     const base = vehicleBaseIndex(index);
     shared.floats[base + VehicleField.targetSpeedMps] = Math.max(0, targetMps);
   };
 
-  const integrated = state.cars.map((car) => {
-    if (car.finished) return car;
+  // Mutate the live array in place — no {...car} copies per frame.
+  const cars = getLiveRaceCars();
+  for (let ci = 0; ci < cars.length; ci += 1) {
+    const car = cars[ci];
+    if (car.finished) continue;
 
-    const next = { ...car };
-
-    if (!next.isPlayer && !next.pendingBox && !next.isBoxing && !next.garageReturn) {
-      if (next.tireWear < 28 || needsWetStrategyBox(next, rain)) {
-        next.pendingBox = true;
-        next.pendingCompound = pickAiCompound(rain, next.tireWear);
+    if (!car.isPlayer && !car.pendingBox && !car.isBoxing && !car.garageReturn) {
+      if (car.tireWear < 28 || needsWetStrategyBox(car, rain)) {
+        car.pendingBox = true;
+        car.pendingCompound = pickAiCompound(rain, car.tireWear);
       } else if (Math.random() < 0.0008) {
         const modes: EngineMode[] = ["push", "standard", "save"];
-        next.engineMode = modes[Math.floor(Math.random() * modes.length)];
+        car.engineMode = modes[Math.floor(Math.random() * modes.length)];
       }
     }
 
-    if (next.isBoxing) {
-      next.currentLapTimeMs += dt * 1000;
-      next.brakeIntensity = next.pitPhase === "in" ? 0.75 : 0;
-      const boxT = pitBoxTFor(next);
-      const phase = next.pitPhase ?? "in";
+    if (car.isBoxing) {
+      car.currentLapTimeMs += dt * 1000;
+      car.brakeIntensity = car.pitPhase === "in" ? 0.75 : 0;
+      const boxT = pitBoxTFor(car);
+      const phase = car.pitPhase ?? "in";
 
       if (phase === "in") {
-        next.pitPhase = "in";
-        const rate = pitProgressRate("in", next.pitProgress, boxT);
-        next.pitProgress = Math.min(boxT, next.pitProgress + rate * dt);
-        if (next.pitProgress >= boxT - 1e-4) {
-          next.pitProgress = boxT;
-          if (next.garageReturn) {
-            Object.assign(next, completeGarageReturn(next));
+        car.pitPhase = "in";
+        const rate = pitProgressRate("in", car.pitProgress, boxT);
+        car.pitProgress = Math.min(boxT, car.pitProgress + rate * dt);
+        if (car.pitProgress >= boxT - 1e-4) {
+          car.pitProgress = boxT;
+          if (car.garageReturn) {
+            Object.assign(car, completeGarageReturn(car));
           } else {
-            next.pitPhase = "stopped";
-            next.pitStopElapsed = 0;
-            next.pitHoldTraffic = false;
-            next.pitServiceDone = false;
+            car.pitPhase = "stopped";
+            car.pitStopElapsed = 0;
+            car.pitHoldTraffic = false;
+            car.pitServiceDone = false;
           }
         }
       } else if (phase === "stopped") {
-        next.pitProgress = boxT;
-        next.pitStopElapsed += dt;
-        if (!next.pitServiceDone && next.pitStopElapsed >= PIT_STOP_DURATION_S) {
-          Object.assign(next, applyServiceComplete(next));
-          next.pitServiceDone = true;
+        car.pitProgress = boxT;
+        car.pitStopElapsed += dt;
+        if (!car.pitServiceDone && car.pitStopElapsed >= PIT_STOP_DURATION_S) {
+          Object.assign(car, applyServiceComplete(car));
+          car.pitServiceDone = true;
         }
-        if (next.pitServiceDone) {
-          next.pitHoldTraffic = true;
+        if (car.pitServiceDone) {
+          car.pitHoldTraffic = true;
         }
       } else if (phase === "out") {
-        next.pitHoldTraffic = false;
-        const rate = pitProgressRate("out", next.pitProgress, boxT);
-        next.pitProgress = Math.min(1, next.pitProgress + rate * dt);
-        if (next.pitProgress >= 1) {
-          Object.assign(next, finishPitExit(next, elapsedMs, state.totalLaps, dt));
+        car.pitHoldTraffic = false;
+        const rate = pitProgressRate("out", car.pitProgress, boxT);
+        car.pitProgress = Math.min(1, car.pitProgress + rate * dt);
+        if (car.pitProgress >= 1) {
+          Object.assign(car, finishPitExit(car, elapsedMs, state.totalLaps, dt));
         }
       }
-    } else if (next.status === "retired") {
-      next.speedMps = 0;
-      next.brakeIntensity = 0;
-      next.finished = true;
-      if (!next.finishTimeMs) {
-        next.finishTimeMs =
-          elapsedMs + next.unsafeReleasePenaltyMs + next.timePenaltyMs;
+    } else if (car.status === "retired") {
+      car.speedMps = 0;
+      car.brakeIntensity = 0;
+      car.finished = true;
+      if (!car.finishTimeMs) {
+        car.finishTimeMs = elapsedMs + car.unsafeReleasePenaltyMs + car.timePenaltyMs;
       }
     } else {
-      let targetMps = resolveTargetMps(next, rain, control, drsOn);
-      if (next.pitExitBlend < 1) {
-        next.pitExitBlend = Math.min(1, next.pitExitBlend + dt / PIT_EXIT_RACE_BLEND_S);
+      let targetMps = resolveTargetMps(car, rain, control, drsOn);
+      if (car.pitExitBlend < 1) {
+        car.pitExitBlend = Math.min(1, car.pitExitBlend + dt / PIT_EXIT_RACE_BLEND_S);
       }
-      if (next.garageReturn && !next.isBoxing) {
+      if (car.garageReturn && !car.isBoxing) {
         targetMps = Math.min(targetMps, PIT_ENTRY_HANDOFF_KMH / 3.6);
       }
-      if (next.pendingBox && !next.isBoxing) {
-        const toEntry = ((PIT_ENTRY_T - next.lapProgress) + 1) % 1;
+      if (car.pendingBox && !car.isBoxing) {
+        const toEntry = ((PIT_ENTRY_T - car.lapProgress) + 1) % 1;
         if (toEntry > 0 && toEntry < 0.07) {
           targetMps *= 0.32 + 0.68 * (toEntry / 0.07);
         }
       }
 
-      const phys = integrateSpeed({
-        speedMps: next.speedMps,
-        status: next.status,
-        damage: next.damage,
-        incidentTimer: next.incidentTimer,
-        incidentKind: next.incidentKind,
-        tireWear: next.tireWear,
-        compound: next.currentCompound,
-        engineMode: next.engineMode,
+      integrateSpeedInto(PHYS_SCRATCH, {
+        speedMps: car.speedMps,
+        status: car.status,
+        damage: car.damage,
+        incidentTimer: car.incidentTimer,
+        incidentKind: car.incidentKind,
+        tireWear: car.tireWear,
+        compound: car.currentCompound,
+        engineMode: car.engineMode,
         rain,
         targetMps,
         dt,
       });
-      next.status = phys.status;
-      next.damage = phys.damage;
-      next.incidentTimer = phys.incidentTimer;
-      next.incidentKind = phys.incidentKind;
-      next.brakeIntensity = phys.brakeIntensity;
-      next.speedMps = phys.speedMps;
-      next.lapProgress += (phys.speedMps * dt) / TRACK_LENGTH_M;
-      writePhysicsTarget(next, phys.speedMps);
+      car.status = PHYS_SCRATCH.status;
+      car.damage = PHYS_SCRATCH.damage;
+      car.incidentTimer = PHYS_SCRATCH.incidentTimer;
+      car.incidentKind = PHYS_SCRATCH.incidentKind;
+      car.brakeIntensity = PHYS_SCRATCH.brakeIntensity;
+      car.speedMps = PHYS_SCRATCH.speedMps;
+      car.lapProgress += (PHYS_SCRATCH.speedMps * dt) / TRACK_LENGTH_M;
+      writePhysicsTarget(car, PHYS_SCRATCH.speedMps);
 
-      const prevProgress = next.lapProgress - (phys.speedMps * dt) / TRACK_LENGTH_M;
-      next.currentLapTimeMs += dt * 1000;
-      if (drsOn && crossedDetection(prevProgress, next.lapProgress)) {
-        const sorted = [...state.cars].sort((a, b) => {
-          if (b.currentLap !== a.currentLap) return b.currentLap - a.currentLap;
-          return b.lapProgress - a.lapProgress;
-        });
-        const idx = sorted.findIndex((c) => c.id === next.id);
-        const ahead = idx > 0 ? sorted[idx - 1] : null;
+      const prevProgress = car.lapProgress - (PHYS_SCRATCH.speedMps * dt) / TRACK_LENGTH_M;
+      car.currentLapTimeMs += dt * 1000;
+      if (drsOn && crossedDetection(prevProgress, car.lapProgress)) {
+        const ahead = nearestCarAhead(cars, car, prevProgress);
         if (!ahead) {
-          next.drsEligible = false;
+          car.drsEligible = false;
         } else {
-          const leaderDist = (ahead.currentLap - 1 + ahead.lapProgress) * 1000;
-          const carDist = (next.currentLap - 1 + prevProgress) * 1000;
-          const gapM = ((leaderDist - carDist) / 1000) * TRACK_LENGTH_M;
-          const refSpeed = Math.max(SEPANG_AVG_SPEED_MPS * 0.5, next.speedMps);
-          next.drsEligible = gapM > 0 && gapM < refSpeed;
+          const gapM =
+            (raceDistance(ahead) - (car.currentLap + prevProgress)) * TRACK_LENGTH_M;
+          const refSpeed = Math.max(SEPANG_AVG_SPEED_MPS * 0.5, car.speedMps);
+          car.drsEligible = gapM > 0 && gapM < refSpeed;
         }
       }
-      if (prevProgress <= DRS_ZONE_END && next.lapProgress > DRS_ZONE_END) {
-        next.drsEligible = false;
+      if (prevProgress <= DRS_ZONE_END && car.lapProgress > DRS_ZONE_END) {
+        car.drsEligible = false;
       }
-      const wearRate = baseWearRatePerSec(next.currentCompound, rain, next.engineMode);
-      next.tireWear = Math.max(0, phys.tireWear - wearRate * dt);
+      const wearRate = baseWearRatePerSec(car.currentCompound, rain, car.engineMode);
+      car.tireWear = Math.max(0, PHYS_SCRATCH.tireWear - wearRate * dt);
 
-      if (next.status === "retired") {
-        next.finished = true;
-        next.finishTimeMs =
-          elapsedMs + next.unsafeReleasePenaltyMs + next.timePenaltyMs;
-        next.speedMps = 0;
+      if (car.status === "retired") {
+        car.finished = true;
+        car.finishTimeMs = elapsedMs + car.unsafeReleasePenaltyMs + car.timePenaltyMs;
+        car.speedMps = 0;
       }
 
-      if (next.pendingBox && !next.isBoxing) {
-        const prev = car.lapProgress;
+      if (car.pendingBox && !car.isBoxing) {
+        const prev = prevProgress;
         const crossedEntry =
-          (prev < PIT_ENTRY_T && next.lapProgress >= PIT_ENTRY_T) ||
-          (prev > next.lapProgress && (prev < PIT_ENTRY_T || next.lapProgress >= PIT_ENTRY_T));
+          (prev < PIT_ENTRY_T && car.lapProgress >= PIT_ENTRY_T) ||
+          (prev > car.lapProgress && (prev < PIT_ENTRY_T || car.lapProgress >= PIT_ENTRY_T));
         if (crossedEntry) {
-          next.isBoxing = true;
-          next.pitPhase = "in";
-          next.pitProgress = 0;
-          next.pitStopElapsed = 0;
-          next.pitHoldTraffic = false;
-          next.pitServiceDone = false;
-          next.lapProgress = PIT_ENTRY_T;
-          next.pitLapPending = !next.garageReturn;
+          car.isBoxing = true;
+          car.pitPhase = "in";
+          car.pitProgress = 0;
+          car.pitStopElapsed = 0;
+          car.pitHoldTraffic = false;
+          car.pitServiceDone = false;
+          car.lapProgress = PIT_ENTRY_T;
+          car.pitLapPending = !car.garageReturn;
         }
       }
 
-      if (next.lapProgress >= 1) {
-        next.lapProgress -= 1;
-        if (next.garageReturn) {
-          next.currentLap = state.totalLaps;
+      if (car.lapProgress >= 1) {
+        car.lapProgress -= 1;
+        if (car.garageReturn) {
+          car.currentLap = state.totalLaps;
+        } else if (!car.sfCrossedOnce) {
+          // Grid sits at t≈0.998 — first wrap is not a lap for anyone (timer-based
+          // counting let back markers steal a lap while the front row did not).
+          car.sfCrossedOnce = true;
         } else {
-          const genuineLap = next.currentLapTimeMs >= MIN_LAP_MS;
+          const genuineLap = car.currentLapTimeMs >= MIN_LAP_MS;
           if (genuineLap) {
-            next.lastLapTimeMs = next.currentLapTimeMs;
-            next.currentLapTimeMs = 0;
-            next.currentLap += 1;
+            car.lastLapTimeMs = car.currentLapTimeMs;
+            car.currentLapTimeMs = 0;
+            car.currentLap += 1;
 
-            if (next.pendingBox && !next.isBoxing) {
-              next.isBoxing = true;
-              next.pitPhase = "in";
-              next.pitProgress = 0.02;
-              next.pitStopElapsed = 0;
-              next.pitHoldTraffic = false;
-              next.pitServiceDone = false;
-              next.lapProgress = PIT_EXIT_T;
-              next.pitLapPending = false;
+            if (car.pendingBox && !car.isBoxing) {
+              car.isBoxing = true;
+              car.pitPhase = "in";
+              car.pitProgress = 0.02;
+              car.pitStopElapsed = 0;
+              car.pitHoldTraffic = false;
+              car.pitServiceDone = false;
+              car.lapProgress = PIT_EXIT_T;
+              car.pitLapPending = false;
             }
 
-            if (next.currentLap > state.totalLaps) {
-              Object.assign(next, beginGarageReturn(next, elapsedMs, dt, state.totalLaps));
+            if (car.currentLap > state.totalLaps) {
+              Object.assign(car, beginGarageReturn(car, elapsedMs, dt, state.totalLaps));
             }
           }
         }
       }
     }
+  }
 
-    return next;
-  });
-
-  const afterRelease = integrated.map((car) => {
-    if (car.garageReturn) return car;
-    if (!car.isBoxing || car.pitPhase !== "stopped" || !car.pitServiceDone) return car;
-    const blocked = isPitReleaseBlocked(integrated, car);
+  for (let ci = 0; ci < cars.length; ci += 1) {
+    const car = cars[ci];
+    if (car.garageReturn) continue;
+    if (!car.isBoxing || car.pitPhase !== "stopped" || !car.pitServiceDone) continue;
+    const blocked = isPitReleaseBlocked(cars, car);
     if (car.isPlayer && state.playMode === "mission") {
-      return { ...car, pitHoldTraffic: blocked || true };
+      car.pitHoldTraffic = blocked;
+      continue;
     }
     if (!blocked) {
-      return beginPitExit(car, false);
+      Object.assign(car, beginPitExit(car, false));
+      continue;
     }
     if (!car.isPlayer && Math.random() < 0.08 * dt) {
-      return beginPitExit(car, true);
+      Object.assign(car, beginPitExit(car, true));
+      continue;
     }
-    return { ...car, pitHoldTraffic: true };
-  });
+    car.pitHoldTraffic = true;
+  }
 
-  const cars = resolveTraffic(afterRelease, dt, elapsedMs < 4500);
-  setLiveRaceCars(cars);
+  resolveTraffic(cars, dt, elapsedMs < 4500, elapsedMs);
 
   simElapsedMs = elapsedMs;
   const allDone = cars.every((c) => c.finished);
@@ -1292,14 +1426,15 @@ export const stepRaceSimulation = (dt: number): void => {
   if (syncUi) uiSyncAccum = 0;
 
   if (syncUi) {
-    const standings = buildStandings(cars, state.totalLaps, nextPhase);
+    const uiCars = cars.map((c) => ({ ...c }));
+    const standings = buildStandings(uiCars, state.totalLaps, nextPhase);
     const winnerId = allDone ? standings[0]?.id ?? null : state.winnerId;
-    const playerCar = cars.find((c) => c.isPlayer);
+    const playerCar = uiCars.find((c) => c.isPlayer);
     const drsActive =
       drsOn && !!playerCar && playerCar.drsEligible && isInDrsZone(playerCar.lapProgress);
 
     useRaceStore.setState({
-      cars,
+      cars: uiCars,
       elapsedMs,
       standings,
       rainIntensity: rain,
@@ -1307,7 +1442,7 @@ export const stepRaceSimulation = (dt: number): void => {
       phase: nextPhase,
       isRunning: allDone ? false : state.isRunning,
       drsActive,
-      ...syncPlayerMirrors(cars, rain),
+      ...syncPlayerMirrors(uiCars, rain),
     });
 
     emitRaceSnapshot({

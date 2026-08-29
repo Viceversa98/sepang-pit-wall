@@ -4,6 +4,8 @@ import { sampleCarPose } from "@/lib/carPose";
 import { metresToUnits } from "@/lib/trackCurve";
 import {
   FIELD_META,
+  gridIndexForCar,
+  gridSlotForCar,
   type CarState,
   type RacePhase,
 } from "@/stores/raceStore";
@@ -137,7 +139,7 @@ const createPhotorealCrew = (color: string, gunning: boolean): THREE.Group => {
 
 const createPitStopCrew = (carId: string): CrewEntry => {
   const meta = FIELD_META.find((c) => c.id === carId);
-  const gridIndex = FIELD_META.findIndex((c) => c.id === carId);
+  const gridIndex = gridIndexForCar(carId);
   const suit = meta?.color ?? "#e2e8f0";
   const root = new THREE.Group();
   root.name = `pit-crew-${carId}`;
@@ -314,7 +316,7 @@ export class PitStopCrewField {
         smoothed,
         phase,
         meta.id,
-        entry.gridIndex,
+        gridSlotForCar(car),
         this.poseScratch,
       );
 

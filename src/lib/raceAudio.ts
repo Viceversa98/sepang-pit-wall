@@ -30,6 +30,7 @@ const MAX_RPM = 12800;
 
 let ctx: AudioContext | null = null;
 let unlocked = false;
+let unlockPromise: Promise<boolean> | null = null;
 let muted = false;
 let buffersLoaded = false;
 const buffers: Partial<Record<keyof typeof WAV, AudioBuffer>> = {};
@@ -67,7 +68,6 @@ const ensureCtx = (): AudioContext | null => {
 const loadBuffers = async (): Promise<void> => {
   const c = ensureCtx();
   if (!c || buffersLoaded) return;
-  buffersLoaded = true;
   await Promise.all(
     (Object.keys(WAV) as (keyof typeof WAV)[]).map(async (key) => {
       try {
@@ -80,20 +80,32 @@ const loadBuffers = async (): Promise<void> => {
       }
     }),
   );
+  buffersLoaded = true;
 };
 
-export const unlockRaceAudio = async (): Promise<void> => {
+export const unlockRaceAudio = async (): Promise<boolean> => {
   const c = ensureCtx();
-  if (!c) return;
-  if (c.state === "suspended") {
-    try {
-      await c.resume();
-    } catch {
-      /* ignore */
-    }
+  if (!c) return false;
+  if (unlocked && c.state === "running") return true;
+
+  if (!unlockPromise) {
+    unlockPromise = (async () => {
+      if (c.state === "suspended") {
+        try {
+          await c.resume();
+        } catch {
+          unlocked = false;
+          return false;
+        }
+      }
+      unlocked = c.state === "running";
+      if (unlocked) await loadBuffers();
+      return unlocked;
+    })().finally(() => {
+      unlockPromise = null;
+    });
   }
-  unlocked = c.state === "running";
-  if (unlocked) void loadBuffers();
+  return unlockPromise;
 };
 
 const engineMasterGain = (): number =>
@@ -266,7 +278,23 @@ const stopEngineSynth = (): void => {
 const updateEngineSpeed = (speedMps: number): void => {
   if (!engineRunning) return;
   engineSpeedMps = speedMps;
+  if (engineSrc && buffers.raceBed) {
+    const c = ensureCtx();
+    if (c) {
+      const t = Math.min(1, Math.max(0, speedMps / MAX_RACE_SPEED_MPS));
+      engineSrc.playbackRate.setTargetAtTime(0.85 + t * 0.55, c.currentTime, 0.08);
+    }
+    return;
+  }
   applyEngineRpm(rpmFromSpeed(speedMps));
+};
+
+/** Live sim hook — update RPM without full snapshot when speed changes every frame. */
+export const syncEngineSpeed = (speedMps: number): void => {
+  if (!engineRunning) return;
+  if (Math.abs(speedMps - engineSpeedMps) > 0.35) {
+    updateEngineSpeed(speedMps);
+  }
 };
 
 const startPitBed = (): void => {
@@ -419,9 +447,9 @@ export type RaceAudioSnapshot = {
 export type PitAudioSnapshot = RaceAudioSnapshot;
 
 /** Drive ambient beds + one-shots from player pit / race state. */
-export const syncRaceAudio = (snap: RaceAudioSnapshot): void => {
-  void unlockRaceAudio();
-  if (!unlocked) return;
+export const syncRaceAudio = async (snap: RaceAudioSnapshot): Promise<void> => {
+  const ok = await unlockRaceAudio();
+  if (!ok) return;
 
   const inPit =
     snap.playerBoxing &&
@@ -431,11 +459,16 @@ export const syncRaceAudio = (snap: RaceAudioSnapshot): void => {
   else stopPitBed();
 
   const engineActive =
-    (snap.racing || snap.phase === "starting") && !inPit && snap.phase !== "finished";
+    (snap.racing || snap.phase === "starting" || snap.phase === "ready") &&
+    !inPit &&
+    snap.phase !== "finished" &&
+    snap.phase !== "landing";
+
   if (engineActive) {
     startEngineSynth();
-    const speed = snap.phase === "starting" ? 0 : snap.speedMps;
-    if (Math.abs(speed - engineSpeedMps) > 0.4 || snap.phase === "starting") {
+    const speed =
+      snap.phase === "starting" || snap.phase === "ready" ? 0 : snap.speedMps;
+    if (Math.abs(speed - engineSpeedMps) > 0.35 || snap.phase === "starting" || snap.phase === "ready") {
       updateEngineSpeed(speed);
     }
   } else {

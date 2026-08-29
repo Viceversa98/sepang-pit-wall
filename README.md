@@ -11,6 +11,8 @@ npm run dev
 
 Open `http://localhost:5173` — requires COOP/COEP headers (configured in `vite.config.ts` for `SharedArrayBuffer`).
 
+**Do not** open `dist/index.html` directly or use Live Server — use `npm run dev`, `npm run preview`, or `npm run serve:dist` after a build.
+
 ## Stack
 
 | Layer | Tech |
@@ -37,6 +39,10 @@ src/
 ```
 
 Track surface and AI waypoints are **code-generated** from OSM centerline data (`src/lib/trackCurve.ts`).
+
+## Author
+
+Built by **[Alif Asraf](https://www.alifasraf.asia/)** — [mdalifasraf@gmail.com](mailto:mdalifasraf@gmail.com)
 
 ## Scripts
 

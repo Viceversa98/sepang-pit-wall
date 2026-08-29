@@ -12,6 +12,7 @@ import {
 } from "@/lib/trackCurve";
 import { JACK_LIFT_M, PIT_POSE_BLEND } from "@/lib/pitStop";
 import type { CarState, RacePhase } from "@/stores/raceStore";
+import { gridSlotForCar } from "@/stores/raceStore";
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _trackPoint = new THREE.Vector3();
@@ -47,14 +48,14 @@ export const sampleCarPose = (
   car: CarState,
   phase: RacePhase,
   _carId: string,
-  gridIndex: number,
+  _gridIndex: number,
   out?: CarWorldPose,
 ): CarWorldPose => {
   const position = out?.position ?? new THREE.Vector3();
   const tangent = out?.tangent ?? new THREE.Vector3();
 
-  if ((phase === "starting" || phase === "ready") && gridIndex >= 0) {
-    const slot = getGridSlot(gridIndex);
+  if (phase === "starting" || phase === "ready") {
+    const slot = getGridSlot(gridSlotForCar(car));
     position.copy(slot.position);
     position.y += ASPHALT_LIFT;
     tangent.copy(slot.tangent).normalize();

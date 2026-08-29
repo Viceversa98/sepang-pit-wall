@@ -5,6 +5,7 @@ import {
   cornerWorld,
   resolveCampusPlacements,
 } from "@/lib/sepangCampusLayout";
+import { footprintClearsTrack } from "@/lib/trackClearance";
 import { METRES_PER_UNIT } from "@/lib/trackCurve";
 import { sampleTerrainHeight } from "@/lib/terrainHeight";
 import { createConcrete } from "@/scene/campus/materials";
@@ -98,6 +99,7 @@ export const buildOsmBackdrop = (): THREE.Group => {
     cz /= b.ringWorld.length;
 
     if (heroFootprintContains(cx, cz, placements)) continue;
+    if (!footprintClearsTrack(b.ringWorld)) continue;
 
     const heightU = b.heightM / METRES_PER_UNIT;
     const geo = extrudeFootprint(b.ringWorld, heightU);

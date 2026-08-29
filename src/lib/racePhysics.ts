@@ -15,8 +15,8 @@ export const SEPANG_AVG_SPEED_MPS = TRACK_LENGTH_M / SEPANG_RACE_LAP_S;
 export const CORNER_REF_KMH = 312;
 const CORNER_REF_MPS = CORNER_REF_KMH / 3.6;
 
-/** Straight-line target ceiling (no 312 km/h cap). Corners still limit via cornerSpeedLimit. */
-export const STRAIGHT_CEILING_KMH = 420;
+/** Drag-limited top speed (F1 record ≈ 372 km/h). Corners limit via brakingTargetMps. */
+export const STRAIGHT_CEILING_KMH = 372;
 export const STRAIGHT_CEILING_MPS = STRAIGHT_CEILING_KMH / 3.6;
 
 /** @deprecated Use CORNER_REF_KMH or STRAIGHT_CEILING_KMH. */
@@ -419,7 +419,8 @@ export type IntegrateResult = {
   brakeIntensity: number;
 };
 
-export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
+/** Zero-allocation physics step — reuse `out` every car in the sim hot loop. */
+export const integrateSpeedInto = (out: IntegrateResult, input: IntegrateInput): void => {
   const grip = availableGrip(
     input.compound,
     input.rain,
@@ -429,17 +430,16 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
   );
 
   if (input.status === "retired") {
-    return {
-      speedMps: 0,
-      status: "retired",
-      damage: input.damage,
-      incidentTimer: 0,
-      incidentKind: input.incidentKind,
-      tireWear: input.tireWear,
-      extraWear: 0,
-      grip,
-      brakeIntensity: 0,
-    };
+    out.speedMps = 0;
+    out.status = "retired";
+    out.damage = input.damage;
+    out.incidentTimer = 0;
+    out.incidentKind = input.incidentKind;
+    out.tireWear = input.tireWear;
+    out.extraWear = 0;
+    out.grip = grip;
+    out.brakeIntensity = 0;
+    return;
   }
 
   let status = input.status;
@@ -466,17 +466,16 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
       status = "racing";
       incidentKind = null;
     }
-    return {
-      speedMps: speed,
-      status,
-      damage,
-      incidentTimer,
-      incidentKind,
-      tireWear: Math.max(0, input.tireWear - extraWear),
-      extraWear,
-      grip,
-      brakeIntensity: 1,
-    };
+    out.speedMps = speed;
+    out.status = status;
+    out.damage = damage;
+    out.incidentTimer = incidentTimer;
+    out.incidentKind = incidentKind;
+    out.tireWear = Math.max(0, input.tireWear - extraWear);
+    out.extraWear = extraWear;
+    out.grip = grip;
+    out.brakeIntensity = 1;
+    return;
   }
 
   const dt = Math.max(1e-4, input.dt);
@@ -504,7 +503,10 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
       extraWear += 6 * dt;
       speed = Math.max(input.targetMps, speed - brakeLimit * 0.85 * dt);
     } else {
+      const before = speed;
       speed = Math.max(input.targetMps, speed - Math.min(brakeDemand, brakeLimit) * dt);
+      const appliedDecel = (before - speed) / dt;
+      brakeIntensity = Math.min(1, appliedDecel / Math.max(1e-3, brakeLimit));
       if (ratio > 0.92) extraWear += 1.5 * dt;
     }
   } else {
@@ -513,30 +515,44 @@ export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
   }
 
   if (damage >= RETIRE_DAMAGE) {
-    return {
-      speedMps: 0,
-      status: "retired",
-      damage,
-      incidentTimer: 0,
-      incidentKind: "spin",
-      tireWear: Math.max(0, input.tireWear - extraWear),
-      extraWear,
-      grip,
-      brakeIntensity: 0,
-    };
+    out.speedMps = 0;
+    out.status = "retired";
+    out.damage = damage;
+    out.incidentTimer = 0;
+    out.incidentKind = "spin";
+    out.tireWear = Math.max(0, input.tireWear - extraWear);
+    out.extraWear = extraWear;
+    out.grip = grip;
+    out.brakeIntensity = 0;
+    return;
   }
 
-  return {
-    speedMps: speed,
-    status,
-    damage,
-    incidentTimer,
-    incidentKind,
-    tireWear: Math.max(0, input.tireWear - extraWear),
-    extraWear,
-    grip,
-    brakeIntensity,
+  out.speedMps = speed;
+  out.status = status;
+  out.damage = damage;
+  out.incidentTimer = incidentTimer;
+  out.incidentKind = incidentKind;
+  out.tireWear = Math.max(0, input.tireWear - extraWear);
+  out.extraWear = extraWear;
+  out.grip = grip;
+  out.brakeIntensity = brakeIntensity;
+};
+
+/** Allocating wrapper for tests and one-off callers. */
+export const integrateSpeed = (input: IntegrateInput): IntegrateResult => {
+  const out: IntegrateResult = {
+    speedMps: 0,
+    status: "racing",
+    damage: 0,
+    incidentTimer: 0,
+    incidentKind: null,
+    tireWear: 0,
+    extraWear: 0,
+    grip: 0,
+    brakeIntensity: 0,
   };
+  integrateSpeedInto(out, input);
+  return { ...out };
 };
 
 export type CollisionCar = {

@@ -2,12 +2,31 @@
   import {
     PIT_STALL_COUNT,
     PLAYER_LIVERIES,
+    RACE_LAP_OPTIONS,
     useRaceStore,
+    type EngineMode,
+    type TyreCompound,
   } from "@/stores/raceStore";
   import { useAcademyStore } from "@/stores/academyStore";
   import CarShowroom from "@/ui/CarShowroom.svelte";
   import Logo from "@/ui/brand/Logo.svelte";
-  import { pwButtonClass } from "@/ui/pwButton";
+  import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
+
+  const ENGINE_COPY: Record<EngineMode, string> = {
+    push: "Attack — burns tyres",
+    standard: "Balanced pace",
+    save: "Conserve — slower",
+  };
+
+  const COMPOUND_COPY: Record<TyreCompound, string> = {
+    soft: "Fast · fragile",
+    medium: "Race default",
+    hard: "Dry endurance",
+    intermediate: "Light–medium rain",
+    wet: "Heavy wet only",
+  };
+
+  const selectClass = pwSelectClass();
 
   let race = $state(useRaceStore.getState());
 
@@ -37,10 +56,31 @@
 
   const handleOpenHub = () => useAcademyStore.getState().openHub();
   const handleEnterRace = () => useRaceStore.getState().enterRaceDesk();
+
+  const handleEngineChange = (e: Event) => {
+    const value = (e.currentTarget as HTMLSelectElement).value as EngineMode;
+    useRaceStore.getState().setEngineMode(value);
+  };
+
+  const handleCompoundChange = (e: Event) => {
+    const value = (e.currentTarget as HTMLSelectElement).value as TyreCompound;
+    useRaceStore.getState().setCompound(value);
+  };
+
+  const handleLapSelect = (laps: number) => {
+    useRaceStore.getState().setTotalLaps(laps);
+  };
+
+  const handleLapKeyDown = (laps: number, e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleLapSelect(laps);
+    }
+  };
 </script>
 
 <div
-  class="relative flex min-h-dvh flex-1 flex-col overflow-hidden bg-[var(--background)] text-white"
+  class="relative flex h-dvh flex-col overflow-hidden bg-[var(--background)] text-white"
 >
   <div
     class="pointer-events-none absolute inset-0"
@@ -53,17 +93,18 @@
     style:mask-image="linear-gradient(180deg, transparent, black 30%, black 70%, transparent)"
   ></div>
 
-  <div
-    class="relative z-10 grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
-  >
+  <div class="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
     <div
-      class="h-[42dvh] min-h-[220px] w-full lg:h-auto lg:min-h-dvh"
-      aria-hidden="true"
+      class="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
     >
-      <CarShowroom />
-    </div>
+      <div
+        class="h-[34dvh] max-h-[300px] w-full shrink-0 lg:h-auto lg:max-h-none lg:min-h-dvh"
+        aria-hidden="true"
+      >
+        <CarShowroom />
+      </div>
 
-    <main class="flex flex-col justify-center gap-6 px-6 py-10 md:px-12 lg:py-16">
+      <main class="flex flex-col gap-6 px-6 py-8 pb-4 md:px-12 lg:justify-center lg:py-16">
       <div>
         <Logo variant="horizontal" priority class="h-14 w-auto max-w-[min(100%,20rem)] md:h-20" />
         <p class="font-mono mt-4 text-xs tracking-[0.35em] text-amber-400 uppercase">
@@ -103,7 +144,7 @@
 
       <section aria-label="Choose pit stall">
         <p class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
-          Your pit · stall {race.selectedPitBoxIndex + 1}
+          Pit garage · stall {race.selectedPitBoxIndex + 1} · grid P{race.selectedPitBoxIndex + 1}
         </p>
         <div class="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-10">
           {#each Array.from({ length: PIT_STALL_COUNT }, (_, i) => i) as i (i)}
@@ -125,27 +166,103 @@
         </div>
       </section>
 
-      <div class="flex flex-wrap items-center gap-4 pt-2">
-        <button
-          type="button"
-          class={pwButtonClass("primary", "lg")}
-          aria-label="Open F1 Rules Academy"
-          onclick={handleOpenHub}
-        >
-          Rules Academy
-        </button>
-        <button
-          type="button"
-          class={pwButtonClass("secondary", "lg")}
-          aria-label="Enter pit wall free race"
-          onclick={handleEnterRace}
-        >
-          Free race
-        </button>
-        <p class="font-mono text-xs text-slate-400">
-          {race.totalLaps} laps · Learn rules or race free
+      <section aria-label="Starting stint" class="grid gap-4 sm:grid-cols-2">
+        <label class="block space-y-1.5">
+          <span class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
+            Engine
+          </span>
+          <select
+            class={selectClass}
+            value={race.engineMode}
+            aria-label="Engine mode"
+            onchange={handleEngineChange}
+          >
+            <option value="push">Push</option>
+            <option value="standard">Standard</option>
+            <option value="save">Save</option>
+          </select>
+          <p class="text-[11px] text-slate-500">{ENGINE_COPY[race.engineMode]}</p>
+        </label>
+        <label class="block space-y-1.5">
+          <span class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
+            Compound
+          </span>
+          <select
+            class={selectClass}
+            value={race.currentCompound}
+            aria-label="Tyre compound"
+            onchange={handleCompoundChange}
+          >
+            <option value="soft">Soft</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="wet">Wet</option>
+          </select>
+          <p class="text-[11px] text-slate-500">{COMPOUND_COPY[race.currentCompound]}</p>
+        </label>
+      </section>
+
+      <section aria-label="Race distance">
+        <p class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
+          Race distance · {race.totalLaps} laps
         </p>
-      </div>
-    </main>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {#each RACE_LAP_OPTIONS as laps (laps)}
+            {@const selected = race.totalLaps === laps}
+            <button
+              type="button"
+              tabindex="0"
+              aria-label="{laps} lap race"
+              aria-pressed={selected}
+              onclick={() => handleLapSelect(laps)}
+              onkeydown={(e) => handleLapKeyDown(laps, e)}
+              class="flex h-10 min-w-[2.75rem] items-center justify-center rounded-sm border px-3 font-mono text-xs transition {selected
+                ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-100'
+                : 'border-white/15 bg-white/5 text-slate-400 hover:border-white/35'}"
+            >
+              {laps}
+            </button>
+          {/each}
+        </div>
+      </section>
+      </main>
+    </div>
   </div>
+
+  <footer
+    class="relative z-20 flex shrink-0 flex-wrap items-center gap-3 border-t border-white/10 bg-[#0b1220]/95 px-6 py-4 backdrop-blur-md md:px-12"
+    aria-label="Start race"
+  >
+    <button
+      type="button"
+      class={pwButtonClass("primary", "lg")}
+      aria-label="Start race on Sepang grid"
+      onclick={handleEnterRace}
+    >
+      Start race
+    </button>
+    <button
+      type="button"
+      class={pwButtonClass("secondary", "lg")}
+      aria-label="Open F1 Rules Academy"
+      onclick={handleOpenHub}
+    >
+      Rules Academy
+    </button>
+    <p class="font-mono text-xs text-slate-400">
+      {race.totalLaps} laps · P{race.selectedPitBoxIndex + 1} · stall {race.selectedPitBoxIndex + 1}
+    </p>
+    <p class="font-mono ml-auto text-[10px] text-slate-500">
+      Built by
+      <a
+        href="https://www.alifasraf.asia/"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-cyan-400/90 underline decoration-cyan-500/30 underline-offset-2 transition hover:text-cyan-300"
+      >
+        Alif Asraf
+      </a>
+    </p>
+  </footer>
 </div>

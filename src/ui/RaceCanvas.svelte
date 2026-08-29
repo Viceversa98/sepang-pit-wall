@@ -1,37 +1,29 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { addFrameRenderer } from "@/lib/frameLoop";
   import { RaceScene } from "@/scene/RaceScene";
 
   let hostEl: HTMLDivElement | undefined = $state();
   let raceScene: RaceScene | null = null;
-  let frameId = 0;
-  let lastTime = 0;
+  let removeRenderer: (() => void) | null = null;
 
   onMount(() => {
     if (!hostEl) return;
 
     raceScene = new RaceScene();
     raceScene.init(hostEl);
-    lastTime = performance.now();
 
-    const loop = (now: number): void => {
-      if (!raceScene) return;
-      const dt = Math.min(0.05, (now - lastTime) / 1000);
-      lastTime = now;
-      raceScene.update(dt);
-      frameId = requestAnimationFrame(loop);
-    };
-    frameId = requestAnimationFrame(loop);
+    // Rendered from the shared frame loop, right after the sim tick, so every
+    // frame draws this frame's sim state (a second rAF loop rendered stale
+    // state on ~1/3 of frames — the caterpillar motion).
+    removeRenderer = addFrameRenderer((dt) => raceScene?.update(dt));
 
     const canvas = hostEl.querySelector("canvas");
     const onLost = (event: Event): void => {
       event.preventDefault();
-      cancelAnimationFrame(frameId);
       raceScene?.dispose();
       raceScene = new RaceScene();
       raceScene.init(hostEl!);
-      lastTime = performance.now();
-      frameId = requestAnimationFrame(loop);
     };
     canvas?.addEventListener("webglcontextlost", onLost, false);
 
@@ -39,14 +31,14 @@
     window.addEventListener("resize", onResize);
 
     return () => {
-      cancelAnimationFrame(frameId);
       canvas?.removeEventListener("webglcontextlost", onLost);
       window.removeEventListener("resize", onResize);
     };
   });
 
   onDestroy(() => {
-    cancelAnimationFrame(frameId);
+    removeRenderer?.();
+    removeRenderer = null;
     raceScene?.dispose();
     raceScene = null;
   });

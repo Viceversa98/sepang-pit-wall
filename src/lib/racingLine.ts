@@ -3,6 +3,7 @@ import {
   peakCurvatureAhead,
   turnSignAt,
 } from "@/lib/racePhysics";
+import { FIA } from "@/lib/trackCurve";
 
 export type LanePressure = "neutral" | "defending" | "attacking";
 
@@ -39,8 +40,9 @@ export const idealRacingLineOffsetM = (input: RacingLineInput): number => {
 
   const straight = kNow < 0.11 && kAhead < 0.22;
   if (straight) {
-    const wideStraight = kFar < 0.18 ? 1.35 : 0.75;
-    return lineBiasForCar(input.carId) * wideStraight;
+    const wideStraight = kFar < 0.18 ? 1.85 : 1.15;
+    // Spread the field across straights — tiny offsets stacked everyone in one corridor.
+    return lineBiasForCar(input.carId) * wideStraight * FIA.gridLaneOffsetM;
   }
 
   if (turn === 0) {

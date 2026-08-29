@@ -139,8 +139,8 @@
       <div
         class="shrink-0 border-b border-cyan-500/25 bg-cyan-950/30 px-4 py-2 font-mono text-[11px] text-cyan-100/90"
       >
-        Cars on the grid — press <span class="text-amber-300">Start</span> for the FIA lights
-        sequence.
+        Cars on the grid — set compound & engine in the strategy panel, then press
+        <span class="text-amber-300">Start</span> for the FIA lights sequence.
       </div>
     {/if}
 
