@@ -138,6 +138,8 @@ const applyGapSpeedCap = (
   gapM: number,
   dt: number,
 ): void => {
+  // Never pin speed to zero behind a stationary wreck — steer around instead.
+  if (isBrokenDownOnTrack(ahead)) return;
   if (gapM <= 0 || gapM >= FOLLOW_RANGE_M) return;
   let cap: number;
   if (gapM > MIN_GAP_M) {
@@ -196,6 +198,32 @@ const isChangingLane = (car: CarState): boolean =>
 /** Corridor for gap control — use target lane while committing to a pass. */
 const gapControlLane = (car: CarState): number =>
   isChangingLane(car) ? car.laneTargetM : car.laneOffsetM;
+
+const pickBrokenDownAvoidLane = (
+  cars: CarState[],
+  self: CarState,
+  blocker: CarState,
+): number => {
+  const lookAhead = overtakeLookAheadM(self.lapProgress, self.speedMps) * 2.2;
+  const away = blocker.laneOffsetM >= 0 ? -OVERTAKE_LANE_M : OVERTAKE_LANE_M;
+  const candidates = [
+    away,
+    -away,
+    OVERTAKE_LANE_M,
+    -OVERTAKE_LANE_M,
+    blocker.laneOffsetM >= 0 ? -MAX_LANE_M : MAX_LANE_M,
+    idealRacingLineOffsetM({
+      lapProgress: self.lapProgress,
+      carId: self.id,
+      pressure: "attacking",
+    }),
+  ];
+  for (const lane of candidates) {
+    const clamped = clampLane(lane);
+    if (corridorFree(cars, self, clamped, lookAhead, blocker.id)) return clamped;
+  }
+  return clampLane(blocker.laneOffsetM >= 0 ? -MAX_LANE_M : MAX_LANE_M);
+};
 
 const pickOvertakeLane = (
   cars: CarState[],
@@ -342,6 +370,19 @@ export const resolveTraffic = (
       continue;
     }
 
+    // Nearest stationary wreck ahead — any lane, including corners.
+    let wreck: CarState | null = null;
+    let wreckGap = Infinity;
+    for (const other of cars) {
+      if (other.id === car.id || isTrafficGhost(other)) continue;
+      if (!isBrokenDownOnTrack(other)) continue;
+      const gap = alongGapM(car, other);
+      if (gap > 0 && gap < wreckGap) {
+        wreckGap = gap;
+        wreck = other;
+      }
+    }
+
     // Nearest car ahead in our corridor
     let nearest: CarState | null = null;
     let nearestGap = Infinity;
@@ -369,11 +410,22 @@ export const resolveTraffic = (
       }
     }
 
-    const passTarget =
-      nearestAny !== null && nearestAnyGap < OVERTAKE_TRIGGER_M ? nearestAny : nearest;
-    const passGap = passTarget === nearestAny ? nearestAnyGap : nearestGap;
+    let passTarget: CarState | null = null;
+    let passGap = Infinity;
+    if (wreck && wreckGap < FOLLOW_RANGE_M) {
+      passTarget = wreck;
+      passGap = wreckGap;
+    } else if (nearestAny !== null && nearestAnyGap < OVERTAKE_TRIGGER_M) {
+      passTarget = nearestAny;
+      passGap = nearestAnyGap;
+    } else if (nearest !== null) {
+      passTarget = nearest;
+      passGap = nearestGap;
+    }
+
+    const wreckBlocker = passTarget !== null && isBrokenDownOnTrack(passTarget);
     const triggerM = passTarget
-      ? isBrokenDownOnTrack(passTarget)
+      ? wreckBlocker
         ? FOLLOW_RANGE_M
         : overtakeTriggerM(car.lapProgress)
       : MIN_GAP_M;
@@ -381,7 +433,9 @@ export const resolveTraffic = (
     let alpha = baseAlpha;
     if (blocked && passTarget) {
       car.blockId = passTarget.id;
-      const cut = pickOvertakeLane(cars, car, passTarget);
+      const cut =
+        pickOvertakeLane(cars, car, passTarget) ??
+        (wreckBlocker ? pickBrokenDownAvoidLane(cars, car, passTarget) : null);
       if (cut !== null) {
         car.laneTargetM = blendGridRelease(
           car,
@@ -392,6 +446,13 @@ export const resolveTraffic = (
       } else if (isChangingLane(car)) {
         // Finish the move already in progress — don't flip while mid-pass.
         car.laneTargetM = blendGridRelease(car, car.laneTargetM, raceElapsedMs);
+        alpha = overtakeAlpha;
+      } else if (wreckBlocker) {
+        car.laneTargetM = blendGridRelease(
+          car,
+          commitLaneTarget(car, pickBrokenDownAvoidLane(cars, car, passTarget)),
+          raceElapsedMs,
+        );
         alpha = overtakeAlpha;
       } else {
         // No clear corridor — hold lane and follow; don't hunt side-to-side.
@@ -423,6 +484,7 @@ export const resolveTraffic = (
     for (const other of cars) {
       if (other.id === car.id || isTrafficGhost(other)) continue;
       if (passing && other.id === car.blockId) continue;
+      if (isBrokenDownOnTrack(other)) continue;
       if (!sameCorridor(selfLane, other.laneOffsetM)) continue;
       const gap = alongGapM(car, other);
       if (gap > 0 && gap < FOLLOW_RANGE_M) {

@@ -76,5 +76,5 @@
 
 <div
   bind:this={hostEl}
-  class="absolute inset-0 z-0 min-h-[200px] w-full overflow-hidden bg-[var(--background)] [&>canvas]:block [&>canvas]:h-full [&>canvas]:w-full"
+  class="absolute inset-0 z-0 min-h-[200px] w-full overflow-hidden bg-[var(--background)] [&>canvas]:!h-full [&>canvas]:!w-full [&>canvas]:block"
 ></div>

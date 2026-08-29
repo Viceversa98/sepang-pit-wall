@@ -296,7 +296,7 @@ export class RaceScene {
     if (w < 1 || h < 1) return;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h, false);
+    this.renderer.setSize(w, h, true);
   }
 
   dispose(): void {

@@ -94,10 +94,11 @@
 </script>
 
 <aside
-  class="pit-panel flex h-full min-h-0 flex-col border-b border-amber-500/15 bg-[var(--pw-panel)] text-white md:border-b-0 md:border-r {className}"
+  class="pit-panel flex h-full min-h-0 flex-col border-b border-amber-500/15 bg-[var(--pw-panel)] text-white md:border-b-0 md:border-r {mobilePortrait && !preRaceGrid ? 'max-h-[38dvh]' : ''} {className}"
   aria-label="Strategy controls"
 >
   <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:p-4">
+  {#if !mobilePortrait || preRaceGrid}
   <div>
     <p class="font-mono text-[10px] tracking-[0.28em] text-amber-400 uppercase">Pit wall · Call</p>
     <h2 class="font-display mt-0.5 text-lg tracking-tight text-slate-50 md:text-xl">
@@ -107,6 +108,7 @@
       Box, compound, engine — keep YOU fast to the flag.
     </p>
   </div>
+  {/if}
 
   {#if preRaceGrid}
     <div
@@ -180,6 +182,7 @@
     </section>
   {/if}
 
+  {#if !mobilePortrait || preRaceGrid}
   <section class="space-y-2" aria-labelledby="stint-label">
     <p id="stint-label" class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase">
       Stint levers
@@ -236,6 +239,7 @@
       <option value="heavy">Heavy rain</option>
     </select>
   </label>
+  {/if}
 
     {#if !mobilePortrait}
       <div class="mt-auto shrink-0 border-t border-white/10 pt-2 font-mono text-[10px] leading-snug text-slate-500">

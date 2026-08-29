@@ -466,22 +466,33 @@ const buildStandings = (
   phase: RacePhase,
 ): StandingsRow[] => {
   const gridOrder = isGridStandingsPhase(phase);
+  const isRetired = (car: CarState): boolean => car.status === "retired";
+  const isRaceFinisher = (car: CarState): boolean => raceComplete(car) && !isRetired(car);
+
   const sorted = [...cars].sort((a, b) => {
-    const aDone = raceComplete(a);
-    const bDone = raceComplete(b);
+    const aRet = isRetired(a);
+    const bRet = isRetired(b);
+    if (aRet && bRet) {
+      return standingsDistance(b, gridOrder) - standingsDistance(a, gridOrder);
+    }
+    if (aRet) return 1;
+    if (bRet) return -1;
+
+    const aDone = isRaceFinisher(a);
+    const bDone = isRaceFinisher(b);
     if (aDone && bDone) return a.finishTimeMs - b.finishTimeMs;
     if (aDone) return -1;
     if (bDone) return 1;
     return standingsDistance(b, gridOrder) - standingsDistance(a, gridOrder);
   });
 
-  const leader = sorted[0];
+  const leader = sorted.find((car) => !isRetired(car)) ?? sorted[0];
   return sorted.map((car, i) => {
     let gapLabel = "LEADER";
     if (car.status === "retired") {
       gapLabel = "OUT";
-    } else if (i > 0) {
-      if (raceComplete(car) && raceComplete(leader)) {
+    } else if (i > 0 && !isRetired(car)) {
+      if (isRaceFinisher(car) && isRaceFinisher(leader)) {
         const gap = ((car.finishTimeMs - leader.finishTimeMs) / 1000).toFixed(2);
         gapLabel = `+${gap}s`;
       } else {

@@ -70,7 +70,7 @@
 
   const raceGridClass = $derived(
     layoutMode === "mobilePortrait"
-      ? "grid-cols-1 grid-rows-[minmax(0,55dvh)_minmax(0,1fr)]"
+      ? "grid-cols-1 grid-rows-[minmax(0,1fr)_auto]"
       : layoutMode === "mobileLandscape"
         ? "grid-cols-[minmax(200px,28%)_minmax(0,1fr)] grid-rows-1"
         : "grid-cols-1 grid-rows-[minmax(0,42dvh)_minmax(0,1fr)] md:grid-cols-[minmax(220px,22%)_minmax(0,1fr)] md:grid-rows-1",
