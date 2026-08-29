@@ -7,6 +7,17 @@
     type TyreCompound,
   } from "@/stores/raceStore";
   import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
+  import { useRaceLayoutGetter } from "@/ui/race/raceLayoutContext";
+
+  type Props = {
+    class?: string;
+  };
+
+  let { class: className = "" }: Props = $props();
+
+  const getLayoutMode = useRaceLayoutGetter();
+  const layoutMode = $derived(getLayoutMode());
+  const mobilePortrait = $derived(layoutMode === "mobilePortrait");
 
   const ENGINE_COPY: Record<EngineMode, string> = {
     push: "Attack — burns tyres",
@@ -83,9 +94,10 @@
 </script>
 
 <aside
-  class="pit-panel flex h-full min-h-0 flex-col gap-3 overflow-y-auto border-b border-amber-500/15 bg-[var(--pw-panel)] p-3 text-white md:border-b-0 md:border-r md:p-4"
+  class="pit-panel flex h-full min-h-0 flex-col border-b border-amber-500/15 bg-[var(--pw-panel)] text-white md:border-b-0 md:border-r {className}"
   aria-label="Strategy controls"
 >
+  <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:p-4">
   <div>
     <p class="font-mono text-[10px] tracking-[0.28em] text-amber-400 uppercase">Pit wall · Call</p>
     <h2 class="font-display mt-0.5 text-lg tracking-tight text-slate-50 md:text-xl">
@@ -127,44 +139,46 @@
     </div>
   {/if}
 
-  <section class="space-y-2" aria-labelledby="box-call-label">
-    <p
-      id="box-call-label"
-      class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase"
-    >
-      Primary call
-    </p>
-    <button
-      type="button"
-      class="{pwButtonClass(strategy.isBoxing ? 'secondary' : 'primary', 'md', {
-        fullWidth: true,
-        className: urgeBox && !strategy.isBoxing ? 'ring-2 ring-rose-400/70' : '',
-      })}"
-      {disabled}
-      aria-label={strategy.isBoxing ? "In the box" : urgeBox ? "Box now urgent" : "Box next lap"}
-      onclick={handleBox}
-    >
-      {strategy.isBoxing ? "In the box…" : urgeBox ? "Box now (urgent)" : "Box next lap"}
-    </button>
-    {#if canRelease}
+  {#if !mobilePortrait}
+    <section class="space-y-2" aria-labelledby="box-call-label">
+      <p
+        id="box-call-label"
+        class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase"
+      >
+        Primary call
+      </p>
       <button
         type="button"
-        class="{pwButtonClass('primary', 'md', {
+        class="{pwButtonClass(strategy.isBoxing ? 'secondary' : 'primary', 'md', {
           fullWidth: true,
-          className: strategy.pitHoldTraffic ? 'ring-2 ring-amber-400/70' : '',
+          className: urgeBox && !strategy.isBoxing ? 'ring-2 ring-rose-400/70' : '',
         })}"
-        aria-label="Release from pit box"
-        onclick={handleRelease}
+        {disabled}
+        aria-label={strategy.isBoxing ? "In the box" : urgeBox ? "Box now urgent" : "Box next lap"}
+        onclick={handleBox}
       >
-        {strategy.pitHoldTraffic ? "Release now (traffic!)" : "Release"}
+        {strategy.isBoxing ? "In the box…" : urgeBox ? "Box now (urgent)" : "Box next lap"}
       </button>
-    {/if}
-    <p class="text-[10px] text-slate-500">
-      {canRelease && strategy.pitHoldTraffic
-        ? "Hold for clear lane — early release = +10s unsafe"
-        : "Pit after T15 · stop · change · exit"}
-    </p>
-  </section>
+      {#if canRelease}
+        <button
+          type="button"
+          class="{pwButtonClass('primary', 'md', {
+            fullWidth: true,
+            className: strategy.pitHoldTraffic ? 'ring-2 ring-amber-400/70' : '',
+          })}"
+          aria-label="Release from pit box"
+          onclick={handleRelease}
+        >
+          {strategy.pitHoldTraffic ? "Release now (traffic!)" : "Release"}
+        </button>
+      {/if}
+      <p class="text-[10px] text-slate-500">
+        {canRelease && strategy.pitHoldTraffic
+          ? "Hold for clear lane — early release = +10s unsafe"
+          : "Pit after T15 · stop · change · exit"}
+      </p>
+    </section>
+  {/if}
 
   <section class="space-y-2" aria-labelledby="stint-label">
     <p id="stint-label" class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase">
@@ -223,9 +237,49 @@
     </select>
   </label>
 
-  <div
-    class="mt-auto shrink-0 border-t border-white/10 pt-2 font-mono text-[10px] leading-snug text-slate-500"
-  >
-    Wear → box → pits → rain.
+    {#if !mobilePortrait}
+      <div class="mt-auto shrink-0 border-t border-white/10 pt-2 font-mono text-[10px] leading-snug text-slate-500">
+        Wear → box → pits → rain.
+      </div>
+    {/if}
   </div>
+
+  {#if mobilePortrait}
+    <section
+      class="shrink-0 space-y-2 border-t border-amber-500/20 bg-[var(--pw-panel)] p-3 pb-[max(0.75rem,var(--safe-bottom))]"
+      aria-labelledby="box-call-label-mobile"
+    >
+      <p
+        id="box-call-label-mobile"
+        class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase"
+      >
+        Primary call
+      </p>
+      <button
+        type="button"
+        class="{pwButtonClass(strategy.isBoxing ? 'secondary' : 'primary', 'touch', {
+          fullWidth: true,
+          className: urgeBox && !strategy.isBoxing ? 'ring-2 ring-rose-400/70' : '',
+        })}"
+        {disabled}
+        aria-label={strategy.isBoxing ? "In the box" : urgeBox ? "Box now urgent" : "Box next lap"}
+        onclick={handleBox}
+      >
+        {strategy.isBoxing ? "In the box…" : urgeBox ? "Box now (urgent)" : "Box next lap"}
+      </button>
+      {#if canRelease}
+        <button
+          type="button"
+          class="{pwButtonClass('primary', 'touch', {
+            fullWidth: true,
+            className: strategy.pitHoldTraffic ? 'ring-2 ring-amber-400/70' : '',
+          })}"
+          aria-label="Release from pit box"
+          onclick={handleRelease}
+        >
+          {strategy.pitHoldTraffic ? "Release now (traffic!)" : "Release"}
+        </button>
+      {/if}
+    </section>
+  {/if}
 </aside>

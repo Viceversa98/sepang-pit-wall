@@ -37,8 +37,9 @@ import {
   type CarState,
   type RacePhase,
 } from "@/stores/raceStore";
+import { detectRaceSceneQuality, type RaceSceneQuality } from "@/lib/qualityTier";
 
-const RAIN_COUNT = 3200;
+const DEFAULT_RAIN_COUNT = 3200;
 const OVERVIEW_HEIGHT = 100;
 const OVERVIEW_BACK = 85;
 
@@ -89,17 +90,21 @@ export class RaceScene {
   private terrain!: TerrainBuildResult;
   private atmosphere!: AtmosphereHandle;
   private disposed = false;
+  private quality: RaceSceneQuality = detectRaceSceneQuality();
+  private rainCount = DEFAULT_RAIN_COUNT;
 
   init(hostElement: HTMLElement): void {
     this.hostElement = hostElement;
+    this.quality = detectRaceSceneQuality();
+    this.rainCount = this.quality.rainCount;
     const state = useRaceStore.getState();
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: this.quality.antialias,
       powerPreference: "high-performance",
     });
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.shadowMap.enabled = this.quality.shadows;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.dprCap));
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 900);
     this.camera.position.set(0, 160, 140);
@@ -334,8 +339,13 @@ export class RaceScene {
 
     this.directionalLight = new THREE.DirectionalLight(sunLightColor(rainIntensity), key);
     this.directionalLight.position.copy(sunDirectionalPosition(this.atmosphere.sun));
-    this.directionalLight.castShadow = true;
-    this.directionalLight.shadow.mapSize.set(2048, 2048);
+    this.directionalLight.castShadow = this.quality.shadows;
+    if (this.quality.shadows && this.quality.shadowMapSize > 0) {
+      this.directionalLight.shadow.mapSize.set(
+        this.quality.shadowMapSize,
+        this.quality.shadowMapSize,
+      );
+    }
     this.directionalLight.shadow.camera.far = 400;
     this.directionalLight.shadow.camera.left = -180;
     this.directionalLight.shadow.camera.right = 180;
@@ -364,8 +374,8 @@ export class RaceScene {
   }
 
   private createRainPositions(): Float32Array {
-    const arr = new Float32Array(RAIN_COUNT * 3);
-    for (let i = 0; i < RAIN_COUNT; i++) {
+    const arr = new Float32Array(this.rainCount * 3);
+    for (let i = 0; i < this.rainCount; i++) {
       sampleRainInField(this.rainSpawnScratch, true);
       arr[i * 3] = this.rainSpawnScratch.x;
       arr[i * 3 + 1] = this.rainSpawnScratch.y;
@@ -394,7 +404,7 @@ export class RaceScene {
     const attrs = this.rainPoints.geometry.attributes.position as THREE.BufferAttribute;
     const arr = attrs.array as Float32Array;
     const speed = 10 + intensity * 28;
-    for (let i = 0; i < RAIN_COUNT; i++) {
+    for (let i = 0; i < this.rainCount; i++) {
       arr[i * 3 + 1] -= speed * delta;
       if (arr[i * 3 + 1] < 0) this.respawnRainDrop(arr, i);
     }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { CHAPTERS, getMission, isChapterUnlocked } from "@/lib/academy/curriculum";
+  import { unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import { useAcademyStore } from "@/stores/academyStore";
   import { useRaceStore } from "@/stores/raceStore";
   import Logo from "@/ui/brand/Logo.svelte";
@@ -19,6 +20,7 @@
     if (!academy.isUnlocked(missionId)) return;
     const mission = getMission(missionId);
     if (!mission) return;
+    unlockRaceAudioFromGesture();
     academy.setActiveMission(missionId);
     useRaceStore.getState().startMissionRace({
       totalLaps: mission.setup.totalLaps,
@@ -64,7 +66,7 @@
       </div>
       <button
         type="button"
-        class={pwButtonClass("secondary", "sm")}
+        class={pwButtonClass("secondary", "touch")}
         aria-label="Back to landing"
         onclick={() => academy.closeHubToLanding()}
       >
@@ -119,7 +121,7 @@
                     aria-disabled={!open}
                     onclick={() => handleStartMission(mid)}
                     onkeydown={(e) => handleMissionKeyDown(mid, e)}
-                    class="flex w-full items-center justify-between gap-3 rounded-sm border px-3 py-2 text-left transition {open
+                    class="flex min-h-11 w-full items-center justify-between gap-3 rounded-sm border px-3 py-2 text-left transition {open
                       ? 'border-white/15 bg-white/5 hover:border-amber-400/40 hover:bg-amber-500/10'
                       : 'cursor-not-allowed border-white/5 bg-transparent'}"
                   >

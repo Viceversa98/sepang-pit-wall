@@ -106,7 +106,7 @@
     aria-label={beat.title}
   >
     <div
-      class="w-full max-w-lg border border-cyan-500/30 bg-[var(--pw-panel)]/95 px-4 py-5 shadow-[0_0_40px_rgba(34,211,238,0.12)] sm:px-6"
+      class="w-full max-w-lg border border-cyan-500/30 bg-[var(--pw-panel)]/95 px-4 py-5 pb-[max(1.25rem,var(--safe-bottom))] shadow-[0_0_40px_rgba(34,211,238,0.12)] sm:px-6"
     >
       <p class="font-mono text-[10px] tracking-[0.28em] text-cyan-300 uppercase">
         Coach · {mission.title}
@@ -117,7 +117,7 @@
         {#each beat.choices as choice (choice.id)}
           <button
             type="button"
-            class="{pwButtonClass('secondary', 'md', {
+            class="{pwButtonClass('secondary', 'touch', {
               fullWidth: true,
               className: 'justify-start text-left',
             })}"

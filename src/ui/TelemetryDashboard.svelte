@@ -70,12 +70,12 @@
     <div class="flex items-center gap-1.5">
       <button
         type="button"
-        class="font-mono text-[9px] tracking-wide text-white/50 uppercase hover:text-cyan-200"
+        class="flex size-11 items-center justify-center rounded-sm border border-white/15 font-mono text-[10px] tracking-wide text-white/60 uppercase hover:text-cyan-200"
         aria-label={race.audioMuted ? "Unmute race audio" : "Mute race audio"}
         aria-pressed={race.audioMuted}
         onclick={handleToggleMute}
       >
-        {race.audioMuted ? "Unmute" : "Mute"}
+        {race.audioMuted ? "Off" : "On"}
       </button>
       <p class="font-mono text-[10px] tabular-nums text-white/55">
         L{Math.min(timing.currentLap, race.totalLaps)}/{race.totalLaps}

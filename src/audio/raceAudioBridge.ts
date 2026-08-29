@@ -1,8 +1,12 @@
 import {
   disposeRaceAudio,
+  isRaceAudioUnlocked,
+  onRaceAudioBuffersReady,
   setRaceAudioMuted,
   syncEngineSpeed,
   syncRaceAudio,
+  syncRaceLoopAudio,
+  tickLivePitCues,
   unlockRaceAudio,
 } from "@/lib/raceAudio";
 import { getLiveRaceCars } from "@/lib/raceLiveCars";
@@ -79,6 +83,7 @@ export const mountRaceAudioBridge = (): (() => void) => {
 
   const handleSlice = (slice: RaceAudioSlice) => {
     setRaceAudioMuted(slice.audioMuted);
+    if (!isRaceAudioUnlocked()) return;
     const phase = slice.pitPhase;
     const unsafe = slice.unsafeReleasePenaltyMs;
     const justReleased = prevPitPhase === "stopped" && phase === "out";
@@ -125,25 +130,53 @@ export const mountRaceAudioBridge = (): (() => void) => {
     });
   };
 
-  window.addEventListener("pointerdown", tryUnlockAndSync);
-  window.addEventListener("keydown", tryUnlockAndSync);
+  const unlockOpts: AddEventListenerOptions = { capture: true, passive: true };
+  window.addEventListener("pointerdown", tryUnlockAndSync, unlockOpts);
+  window.addEventListener("touchstart", tryUnlockAndSync, unlockOpts);
+  window.addEventListener("keydown", tryUnlockAndSync, unlockOpts);
+  window.addEventListener("click", tryUnlockAndSync, unlockOpts);
 
   const onVisibility = () => {
     if (document.visibilityState === "visible") tryUnlockAndSync();
   };
   document.addEventListener("visibilitychange", onVisibility);
 
-  const pollEngineSpeed = () => {
+  const pollLiveAudio = () => {
     const s = useRaceStore.getState();
-    if (s.phase === "racing" && !s.audioMuted) {
-      const player = getLiveRaceCars().find((c) => c.isPlayer);
-      if (player) syncEngineSpeed(player.speedMps);
-    }
-    audioRaf = requestAnimationFrame(pollEngineSpeed);
-  };
-  audioRaf = requestAnimationFrame(pollEngineSpeed);
+    if (isRaceAudioUnlocked() && !s.audioMuted) {
+      const livePlayer =
+        s.phase === "racing" ? getLiveRaceCars().find((c) => c.isPlayer) : undefined;
+      const storePlayer = s.cars.find((c) => c.isPlayer);
+      const player = livePlayer ?? storePlayer;
 
-  handleSlice(lastSlice);
+      if (player) {
+        syncRaceLoopAudio({
+          phase: s.phase,
+          racing: s.phase === "racing",
+          playerBoxing: !!player.isBoxing,
+          pitPhase: player.pitPhase ?? null,
+          speedMps: player.speedMps ?? s.speedMps,
+        });
+
+        if (s.phase === "racing") {
+          syncEngineSpeed(player.speedMps);
+          if (player.isBoxing) {
+            tickLivePitCues(
+              player.pitPhase ?? null,
+              player.pitStopElapsed,
+              !!player.pitServiceDone,
+            );
+          }
+        }
+      }
+    }
+    audioRaf = requestAnimationFrame(pollLiveAudio);
+  };
+  audioRaf = requestAnimationFrame(pollLiveAudio);
+
+  const stopBuffersReady = onRaceAudioBuffersReady(() => {
+    handleSlice(lastSlice);
+  });
 
   const unsub = useRaceStore.subscribe((s) => {
     const slice = selectRaceAudioSlice(s);
@@ -155,8 +188,11 @@ export const mountRaceAudioBridge = (): (() => void) => {
 
   return () => {
     cancelAnimationFrame(audioRaf);
-    window.removeEventListener("pointerdown", tryUnlockAndSync);
-    window.removeEventListener("keydown", tryUnlockAndSync);
+    stopBuffersReady();
+    window.removeEventListener("pointerdown", tryUnlockAndSync, unlockOpts);
+    window.removeEventListener("touchstart", tryUnlockAndSync, unlockOpts);
+    window.removeEventListener("keydown", tryUnlockAndSync, unlockOpts);
+    window.removeEventListener("click", tryUnlockAndSync, unlockOpts);
     document.removeEventListener("visibilitychange", onVisibility);
     unsub();
     disposeRaceAudio();

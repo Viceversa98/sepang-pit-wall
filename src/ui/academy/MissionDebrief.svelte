@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import { getMission, nextMissionId } from "@/lib/academy/curriculum";
   import { useAcademyStore } from "@/stores/academyStore";
   import { useRaceStore } from "@/stores/raceStore";
@@ -35,6 +36,7 @@
       academy.openHub();
       return;
     }
+    unlockRaceAudioFromGesture();
     academy.setActiveMission(next);
     useRaceStore.getState().startMissionRace({
       totalLaps: def.setup.totalLaps,
@@ -46,6 +48,7 @@
 
   const handleRetry = () => {
     if (!mission) return;
+    unlockRaceAudioFromGesture();
     academy.setActiveMission(mission.id);
     useRaceStore.getState().startMissionRace({
       totalLaps: mission.setup.totalLaps,

@@ -158,16 +158,10 @@ export const availableGrip = (
   rain: number,
   tireWear: number,
   damage: number,
-  engineMode: PhysicsEngineMode,
+  _engineMode: PhysicsEngineMode,
 ): number => {
-  const pushPen = engineMode === "push" ? 0.94 : 1;
   const dmg = 1 - Math.min(100, Math.max(0, damage)) / 200;
-  return (
-    compoundRainGrip(compound, rain) *
-    tireGripCurve(tireWear) *
-    dmg *
-    pushPen
-  );
+  return compoundRainGrip(compound, rain) * tireGripCurve(tireWear) * dmg;
 };
 
 let kappaLut: Float32Array | null = null;

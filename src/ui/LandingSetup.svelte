@@ -7,8 +7,10 @@
     type EngineMode,
     type TyreCompound,
   } from "@/stores/raceStore";
+  import { unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import { useAcademyStore } from "@/stores/academyStore";
   import CarShowroom from "@/ui/CarShowroom.svelte";
+  import AuthorChatBubble from "@/ui/brand/AuthorChatBubble.svelte";
   import Logo from "@/ui/brand/Logo.svelte";
   import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
 
@@ -55,7 +57,10 @@
   };
 
   const handleOpenHub = () => useAcademyStore.getState().openHub();
-  const handleEnterRace = () => useRaceStore.getState().enterRaceDesk();
+  const handleEnterRace = () => {
+    unlockRaceAudioFromGesture();
+    useRaceStore.getState().enterRaceDesk();
+  };
 
   const handleEngineChange = (e: Event) => {
     const value = (e.currentTarget as HTMLSelectElement).value as EngineMode;
@@ -98,7 +103,7 @@
       class="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
     >
       <div
-        class="h-[34dvh] max-h-[300px] w-full shrink-0 lg:h-auto lg:max-h-none lg:min-h-dvh"
+        class="h-[34dvh] max-h-[300px] w-full shrink-0 overflow-hidden lg:h-full lg:max-h-none lg:min-h-[220px]"
         aria-hidden="true"
       >
         <CarShowroom />
@@ -146,7 +151,7 @@
         <p class="font-mono text-[10px] tracking-[0.28em] text-slate-400 uppercase">
           Pit garage · stall {race.selectedPitBoxIndex + 1} · grid P{race.selectedPitBoxIndex + 1}
         </p>
-        <div class="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-10">
+        <div class="mt-3 grid grid-cols-3 gap-2 min-[360px]:grid-cols-5 sm:grid-cols-10">
           {#each Array.from({ length: PIT_STALL_COUNT }, (_, i) => i) as i (i)}
             {@const selected = race.selectedPitBoxIndex === i}
             <button
@@ -156,7 +161,7 @@
               aria-pressed={selected}
               onclick={() => useRaceStore.getState().setPlayerPitBox(i)}
               onkeydown={(e) => handlePitKeyDown(i, e)}
-              class="flex h-10 items-center justify-center rounded-sm border font-mono text-xs transition {selected
+              class="flex h-11 items-center justify-center rounded-sm border font-mono text-xs transition {selected
                 ? 'border-cyan-400/70 bg-cyan-500/15 text-cyan-100'
                 : 'border-white/15 bg-white/5 text-slate-400 hover:border-white/35'}"
             >
@@ -217,7 +222,7 @@
               aria-pressed={selected}
               onclick={() => handleLapSelect(laps)}
               onkeydown={(e) => handleLapKeyDown(laps, e)}
-              class="flex h-10 min-w-[2.75rem] items-center justify-center rounded-sm border px-3 font-mono text-xs transition {selected
+              class="flex h-11 min-w-[2.75rem] items-center justify-center rounded-sm border px-3 font-mono text-xs transition {selected
                 ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-100'
                 : 'border-white/15 bg-white/5 text-slate-400 hover:border-white/35'}"
             >
@@ -231,38 +236,31 @@
   </div>
 
   <footer
-    class="relative z-20 flex shrink-0 flex-wrap items-center gap-3 border-t border-white/10 bg-[#0b1220]/95 px-6 py-4 backdrop-blur-md md:px-12"
+    class="relative z-50 flex shrink-0 flex-col gap-3 border-t border-white/10 bg-[#0b1220]/95 px-6 py-4 pb-[max(1rem,var(--safe-bottom))] backdrop-blur-md sm:flex-row sm:flex-wrap sm:items-center md:px-12"
     aria-label="Start race"
   >
-    <button
-      type="button"
-      class={pwButtonClass("primary", "lg")}
-      aria-label="Start race on Sepang grid"
-      onclick={handleEnterRace}
-    >
-      Start race
-    </button>
-    <button
-      type="button"
-      class={pwButtonClass("secondary", "lg")}
-      aria-label="Open F1 Rules Academy"
-      onclick={handleOpenHub}
-    >
-      Rules Academy
-    </button>
+    <div class="flex flex-wrap gap-3">
+      <button
+        type="button"
+        class={pwButtonClass("primary", "touch")}
+        aria-label="Start race on Sepang grid"
+        onclick={handleEnterRace}
+      >
+        Start race
+      </button>
+      <button
+        type="button"
+        class={pwButtonClass("secondary", "touch")}
+        aria-label="Open F1 Rules Academy"
+        onclick={handleOpenHub}
+      >
+        Rules Academy
+      </button>
+    </div>
     <p class="font-mono text-xs text-slate-400">
       {race.totalLaps} laps · P{race.selectedPitBoxIndex + 1} · stall {race.selectedPitBoxIndex + 1}
     </p>
-    <p class="font-mono ml-auto text-[10px] text-slate-500">
-      Built by
-      <a
-        href="https://www.alifasraf.asia/"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-cyan-400/90 underline decoration-cyan-500/30 underline-offset-2 transition hover:text-cyan-300"
-      >
-        Alif Asraf
-      </a>
-    </p>
   </footer>
+
+  <AuthorChatBubble />
 </div>

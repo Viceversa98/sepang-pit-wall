@@ -4,6 +4,11 @@
   import { buildTrackMapLayout, worldXZToMap } from "@/lib/trackMap2d";
   import { gridSlotForCar, useRaceStore } from "@/stores/raceStore";
 
+  type Props = {
+    compact?: boolean;
+  };
+
+  let { compact = false }: Props = $props();
   let race = $state(useRaceStore.getState());
   let liveCars = $state(getLiveRaceCars());
   const layout = buildTrackMapLayout();
@@ -52,13 +57,15 @@
 </script>
 
 <div
-  class="rounded-sm border border-white/10 bg-[#0a1628]/90 p-1.5"
+  class="rounded-sm border border-white/10 bg-[#0a1628]/90 {compact ? 'p-0.5' : 'p-1.5'}"
   aria-label="Sepang circuit map"
 >
-  <p class="mb-1 font-mono text-[8px] tracking-[0.18em] text-cyan-200/70 uppercase">Track</p>
+  {#if !compact}
+    <p class="mb-1 font-mono text-[8px] tracking-[0.18em] text-cyan-200/70 uppercase">Track</p>
+  {/if}
   <svg
     viewBox="0 0 100 100"
-    class="mx-auto block h-auto w-full max-w-[200px]"
+    class="mx-auto block h-auto w-full {compact ? 'max-w-none' : 'max-w-[200px]'}"
     role="img"
     aria-label="Sepang International Circuit minimap with live car positions"
   >
@@ -90,18 +97,20 @@
       opacity="0.75"
     />
     {#each layout.turns as turn (turn.label)}
-      <text
-        x={turn.x * 100}
-        y={turn.y * 100}
-        text-anchor="middle"
-        dominant-baseline="middle"
-        fill="#94a3b8"
-        font-size="3.2"
-        font-family="ui-monospace, monospace"
-        opacity="0.85"
-      >
-        {turn.label}
-      </text>
+      {#if !compact}
+        <text
+          x={turn.x * 100}
+          y={turn.y * 100}
+          text-anchor="middle"
+          dominant-baseline="middle"
+          fill="#94a3b8"
+          font-size="3.2"
+          font-family="ui-monospace, monospace"
+          opacity="0.85"
+        >
+          {turn.label}
+        </text>
+      {/if}
     {/each}
     <circle
       cx={layout.startFinish.x * 100}
@@ -130,5 +139,7 @@
       />
     {/each}
   </svg>
-  <p class="mt-1 font-mono text-[7px] text-white/35">DRS · pit ● · S/F ○</p>
+  {#if !compact}
+    <p class="mt-1 font-mono text-[7px] text-white/35">DRS · pit ● · S/F ○</p>
+  {/if}
 </div>

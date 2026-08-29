@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import { pointsForPosition, formatPointsTable } from "@/lib/academy/points";
   import { useRaceStore, type StandingsRow } from "@/stores/raceStore";
   import { pwButtonClass } from "@/ui/pwButton";
@@ -53,7 +54,10 @@
     return { medal, gradient, height: STEP_H[place - 1] };
   };
 
-  const handleBeginRace = () => useRaceStore.getState().beginRace();
+  const handleBeginRace = () => {
+    unlockRaceAudioFromGesture();
+    useRaceStore.getState().beginRace();
+  };
   const handleReset = () => useRaceStore.getState().resetToLanding();
 </script>
 

@@ -1,10 +1,11 @@
-export type PwButtonSize = "sm" | "md" | "lg";
+export type PwButtonSize = "sm" | "md" | "lg" | "touch";
 export type PwButtonVariant = "primary" | "secondary";
 
 const sizeClasses: Record<PwButtonSize, string> = {
   sm: "px-2.5 py-1 text-xs",
   md: "px-4 py-2 text-sm",
   lg: "px-5 py-2.5 text-base",
+  touch: "min-h-11 px-4 text-sm",
 };
 
 const variantClasses: Record<PwButtonVariant, string> = {

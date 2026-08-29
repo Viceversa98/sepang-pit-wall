@@ -15,18 +15,27 @@ type CueId =
   | "startGreen"
   | "lightsOut";
 
+const WAV_BASE = `${import.meta.env.BASE_URL}audio/pit/`;
+
 const WAV = {
-  gun: "/audio/pit/gun.wav",
-  jack: "/audio/pit/jack.wav",
-  release: "/audio/pit/release.wav",
-  unsafe: "/audio/pit/unsafe.wav",
-  pitBed: "/audio/pit/pit-bed.wav",
-  raceBed: "/audio/pit/race-bed.wav",
+  gun: `${WAV_BASE}gun.wav`,
+  jack: `${WAV_BASE}jack.wav`,
+  release: `${WAV_BASE}release.wav`,
+  unsafe: `${WAV_BASE}unsafe.wav`,
+  pitBed: `${WAV_BASE}pit-bed.wav`,
+  raceBed: `${WAV_BASE}race-bed.wav`,
 } as const;
 
 const MAX_RACE_SPEED_MPS = 120;
-const IDLE_RPM = 3200;
+const IDLE_RPM = 4200;
 const MAX_RPM = 12800;
+/** Match start-light tick peak (`playStartRedLight` main beep ≈ 0.11). */
+const START_CUE_GAIN = 0.11;
+/** Loops need higher gain than one-shots to feel equally loud. */
+const ENGINE_LOOP_GAIN = START_CUE_GAIN * 2;
+const PIT_LOOP_GAIN = START_CUE_GAIN * 1.6;
+const ENGINE_PLAYBACK_IDLE = 1.12;
+const ENGINE_PLAYBACK_MAX = 2.05;
 
 let ctx: AudioContext | null = null;
 let unlocked = false;
@@ -34,6 +43,10 @@ let unlockPromise: Promise<boolean> | null = null;
 let muted = false;
 let buffersLoaded = false;
 const buffers: Partial<Record<keyof typeof WAV, AudioBuffer>> = {};
+const buffersReadyListeners = new Set<() => void>();
+let engineLoopPrimed = false;
+let pitLoopPrimed = false;
+let engineLoopUsesRaceBed = false;
 
 let pitBedGain: GainNode | null = null;
 let pitBedOsc: OscillatorNode[] = [];
@@ -53,16 +66,73 @@ let lastReleaseAt = 0;
 let lastUnsafeAt = 0;
 let lastStartRedAt = 0;
 
-const ensureCtx = (): AudioContext | null => {
+const createAudioContext = (): AudioContext | null => {
   if (typeof window === "undefined") return null;
-  if (!ctx) {
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return null;
-    ctx = new AC();
-  }
+  const AC =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+  return new AC();
+};
+
+/** Returns the live context — only created during unlock (user gesture). */
+const ensureCtx = (): AudioContext | null => {
+  if (ctx?.state === "closed") ctx = null;
   return ctx;
+};
+
+const audioContextRunning = (c: AudioContext): boolean => c.state === "running";
+
+/** Kick resume + silent buffer in the same user-gesture turn (no await). */
+const primeAudioContextSync = (c: AudioContext): void => {
+  if (audioContextRunning(c)) return;
+  try {
+    void c.resume();
+  } catch {
+    /* continue to silent priming */
+  }
+  if (audioContextRunning(c)) return;
+  const silent = c.createBuffer(1, 1, c.sampleRate);
+  const src = c.createBufferSource();
+  src.buffer = silent;
+  src.connect(c.destination);
+  src.start(0);
+  try {
+    void c.resume();
+  } catch {
+    /* async resume may still succeed */
+  }
+};
+
+/** iOS / Safari fallback when sync priming did not reach "running" yet. */
+const primeAudioContext = async (c: AudioContext): Promise<void> => {
+  if (audioContextRunning(c)) return;
+  primeAudioContextSync(c);
+  if (audioContextRunning(c)) return;
+  try {
+    await c.resume();
+  } catch {
+    /* continue */
+  }
+  if (audioContextRunning(c)) return;
+  const silent = c.createBuffer(1, 1, c.sampleRate);
+  const src = c.createBufferSource();
+  src.buffer = silent;
+  src.connect(c.destination);
+  src.start(0);
+  await c.resume();
+};
+
+const fetchAudio = async (url: string, ms = 2500): Promise<Response | null> => {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { signal: ctrl.signal });
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+  }
 };
 
 const loadBuffers = async (): Promise<void> => {
@@ -71,8 +141,8 @@ const loadBuffers = async (): Promise<void> => {
   await Promise.all(
     (Object.keys(WAV) as (keyof typeof WAV)[]).map(async (key) => {
       try {
-        const res = await fetch(WAV[key]);
-        if (!res.ok) return;
+        const res = await fetchAudio(WAV[key]);
+        if (!res?.ok) return;
         const arr = await res.arrayBuffer();
         buffers[key] = await c.decodeAudioData(arr.slice(0));
       } catch {
@@ -81,31 +151,66 @@ const loadBuffers = async (): Promise<void> => {
     }),
   );
   buffersLoaded = true;
+  stopEngineSynth();
+  stopPitBed();
+  engineLoopPrimed = false;
+  pitLoopPrimed = false;
+  for (const cb of buffersReadyListeners) cb();
 };
 
+/** Re-sync loops after WAV decode (engine/pit beds upgrade from procedural). */
+export const onRaceAudioBuffersReady = (cb: () => void): (() => void) => {
+  buffersReadyListeners.add(cb);
+  if (buffersLoaded) cb();
+  return () => buffersReadyListeners.delete(cb);
+};
+
+/** True only after a user gesture successfully started the AudioContext. */
+export const isRaceAudioUnlocked = (): boolean =>
+  unlocked && !!ctx && ctx.state !== "closed";
+
 export const unlockRaceAudio = async (): Promise<boolean> => {
-  const c = ensureCtx();
-  if (!c) return false;
-  if (unlocked && c.state === "running") return true;
+  if (typeof window === "undefined") return false;
+  if (ctx?.state === "running") {
+    unlocked = true;
+    return true;
+  }
 
   if (!unlockPromise) {
     unlockPromise = (async () => {
-      if (c.state === "suspended") {
-        try {
-          await c.resume();
-        } catch {
+      try {
+        if (!ctx || ctx.state === "closed") ctx = createAudioContext();
+        const c = ctx;
+        if (!c) {
           unlocked = false;
           return false;
         }
+        // Sync priming must run in the gesture turn; await only if still suspended.
+        primeAudioContextSync(c);
+        if (c.state !== "running") await primeAudioContext(c);
+        unlocked = c.state === "running";
+        if (unlocked) {
+          stopEngineSynth();
+          stopPitBed();
+          engineLoopPrimed = false;
+          pitLoopPrimed = false;
+          if (!buffersLoaded) void loadBuffers();
+        }
+        return unlocked;
+      } catch {
+        unlocked = false;
+        return false;
+      } finally {
+        unlockPromise = null;
       }
-      unlocked = c.state === "running";
-      if (unlocked) await loadBuffers();
-      return unlocked;
-    })().finally(() => {
-      unlockPromise = null;
-    });
+    })();
   }
   return unlockPromise;
+};
+
+/** Call at the start of click/key handlers — unlock before store updates. */
+export const unlockRaceAudioFromGesture = (): void => {
+  void unlockRaceAudio();
 };
 
 const engineMasterGain = (): number =>
@@ -114,8 +219,8 @@ const engineMasterGain = (): number =>
 export const setRaceAudioMuted = (value: boolean): void => {
   muted = value;
   const master = engineMasterGain();
-  if (pitBedGain) pitBedGain.gain.value = master * 0.045;
-  if (engineGain) engineGain.gain.value = master * 0.055;
+  if (pitBedGain) pitBedGain.gain.value = master * PIT_LOOP_GAIN;
+  if (engineGain) engineGain.gain.value = master * ENGINE_LOOP_GAIN;
 };
 
 export const isRaceAudioMuted = (): boolean => muted;
@@ -189,23 +294,27 @@ const makeNoiseBuffer = (c: AudioContext): AudioBuffer => {
 
 const startEngineSynth = (): void => {
   const c = ensureCtx();
-  if (!c || !masterOk() || engineGain) return;
+  if (!c || !masterOk() || !audioContextRunning(c) || engineGain) return;
 
   if (buffers.raceBed) {
     engineGain = c.createGain();
-    engineGain.gain.value = 0.055;
+    engineGain.gain.value = ENGINE_LOOP_GAIN * engineMasterGain();
     engineGain.connect(c.destination);
     engineSrc = c.createBufferSource();
     engineSrc.buffer = buffers.raceBed;
     engineSrc.loop = true;
     engineSrc.connect(engineGain);
+    engineSrc.playbackRate.value = enginePlaybackRate(0);
     engineSrc.start();
     engineRunning = true;
+    engineLoopUsesRaceBed = true;
+    engineSpeedMps = 0;
     return;
   }
 
   engineGain = c.createGain();
-  engineGain.gain.value = 0.055;
+  engineGain.gain.value = ENGINE_LOOP_GAIN * engineMasterGain();
+  engineLoopUsesRaceBed = false;
   engineFilter = c.createBiquadFilter();
   engineFilter.type = "lowpass";
   engineFilter.frequency.value = 420;
@@ -273,6 +382,13 @@ const stopEngineSynth = (): void => {
   engineGain = null;
   engineRunning = false;
   engineSpeedMps = 0;
+  engineLoopPrimed = false;
+  engineLoopUsesRaceBed = false;
+};
+
+const enginePlaybackRate = (speedMps: number): number => {
+  const t = Math.min(1, Math.max(0, speedMps / MAX_RACE_SPEED_MPS));
+  return ENGINE_PLAYBACK_IDLE + t * (ENGINE_PLAYBACK_MAX - ENGINE_PLAYBACK_IDLE);
 };
 
 const updateEngineSpeed = (speedMps: number): void => {
@@ -281,8 +397,11 @@ const updateEngineSpeed = (speedMps: number): void => {
   if (engineSrc && buffers.raceBed) {
     const c = ensureCtx();
     if (c) {
-      const t = Math.min(1, Math.max(0, speedMps / MAX_RACE_SPEED_MPS));
-      engineSrc.playbackRate.setTargetAtTime(0.85 + t * 0.55, c.currentTime, 0.08);
+      engineSrc.playbackRate.setTargetAtTime(
+        enginePlaybackRate(speedMps),
+        c.currentTime,
+        0.06,
+      );
     }
     return;
   }
@@ -291,7 +410,7 @@ const updateEngineSpeed = (speedMps: number): void => {
 
 /** Live sim hook — update RPM without full snapshot when speed changes every frame. */
 export const syncEngineSpeed = (speedMps: number): void => {
-  if (!engineRunning) return;
+  if (!engineRunning || !masterOk()) return;
   if (Math.abs(speedMps - engineSpeedMps) > 0.35) {
     updateEngineSpeed(speedMps);
   }
@@ -299,9 +418,9 @@ export const syncEngineSpeed = (speedMps: number): void => {
 
 const startPitBed = (): void => {
   const c = ensureCtx();
-  if (!c || !masterOk() || pitBedGain) return;
+  if (!c || !masterOk() || !audioContextRunning(c) || pitBedGain) return;
   pitBedGain = c.createGain();
-  pitBedGain.gain.value = 0.045;
+  pitBedGain.gain.value = PIT_LOOP_GAIN * engineMasterGain();
   pitBedGain.connect(c.destination);
 
   if (buffers.pitBed) {
@@ -344,6 +463,84 @@ const stopPitBed = (): void => {
   pitBedOsc = [];
   pitBedGain?.disconnect();
   pitBedGain = null;
+  pitLoopPrimed = false;
+};
+
+type LoopAudioSnap = {
+  phase: "landing" | "ready" | "starting" | "racing" | "finished";
+  racing: boolean;
+  playerBoxing: boolean;
+  pitPhase: "in" | "stopped" | "out" | null;
+  speedMps: number;
+};
+
+/** Continuous engine / pit beds — safe to call every frame once unlocked. */
+export const syncRaceLoopAudio = (snap: LoopAudioSnap): void => {
+  if (!isRaceAudioUnlocked()) return;
+  const c = ensureCtx();
+  if (!c || !audioContextRunning(c)) {
+    if (engineGain) stopEngineSynth();
+    if (pitBedGain) stopPitBed();
+    return;
+  }
+
+  const inPit =
+    snap.playerBoxing &&
+    (snap.pitPhase === "in" || snap.pitPhase === "stopped" || snap.pitPhase === "out");
+
+  const engineActive =
+    (snap.racing || snap.phase === "starting" || snap.phase === "ready") &&
+    !inPit &&
+    snap.phase !== "finished" &&
+    snap.phase !== "landing";
+
+  if (engineRunning && buffers.raceBed && !engineLoopUsesRaceBed) {
+    stopEngineSynth();
+  }
+
+  if (inPit) {
+    if (engineGain) stopEngineSynth();
+    if (!pitLoopPrimed) {
+      stopPitBed();
+      startPitBed();
+      pitLoopPrimed = !!pitBedGain;
+    }
+    return;
+  }
+
+  if (pitBedGain) stopPitBed();
+
+  if (engineActive) {
+    if (!engineLoopPrimed) {
+      stopEngineSynth();
+      startEngineSynth();
+      engineLoopPrimed = !!engineGain;
+    }
+    const speed =
+      snap.phase === "starting" || snap.phase === "ready" ? 0 : snap.speedMps;
+    if (
+      engineRunning &&
+      (Math.abs(speed - engineSpeedMps) > 0.35 ||
+        snap.phase === "starting" ||
+        snap.phase === "ready")
+    ) {
+      updateEngineSpeed(speed);
+    }
+  } else if (engineGain) {
+    stopEngineSynth();
+  }
+};
+
+/** Pit one-shots from live sim — call every frame while stopped in box. */
+export const tickLivePitCues = (
+  pitPhase: "in" | "stopped" | "out" | null,
+  pitStopElapsed: number,
+  pitServiceDone: boolean,
+): void => {
+  if (!isRaceAudioUnlocked() || pitPhase !== "stopped" || pitServiceDone) return;
+  playWheelGuns(pitStopElapsed);
+  if (pitStopElapsed > 0.05 && pitStopElapsed < 0.25) playJack(true);
+  if (pitStopElapsed > 2.1 && pitStopElapsed < 2.35) playJack(false);
 };
 
 /** FIA start-light tick when each red illuminates. */
@@ -352,8 +549,8 @@ export const playStartRedLight = (index: number): void => {
   if (now - lastStartRedAt < 120) return;
   lastStartRedAt = now;
   const pitch = 920 + index * 35;
-  beep(pitch, 0.09, "square", 0.11);
-  beep(pitch * 0.5, 0.07, "sine", 0.04, 0.01);
+  beep(pitch, 0.09, "square", START_CUE_GAIN);
+  beep(pitch * 0.5, 0.07, "sine", START_CUE_GAIN * 0.36, 0.01);
 };
 
 /** All five reds on — brief hold tone before lights out. */
@@ -446,46 +643,17 @@ export type RaceAudioSnapshot = {
 /** @deprecated use RaceAudioSnapshot */
 export type PitAudioSnapshot = RaceAudioSnapshot;
 
-/** Drive ambient beds + one-shots from player pit / race state. */
-export const syncRaceAudio = async (snap: RaceAudioSnapshot): Promise<void> => {
-  const ok = await unlockRaceAudio();
-  if (!ok) return;
+/** One-shots + loop sync from store snapshots. Never unlocks — gesture only. */
+export const syncRaceAudio = (snap: RaceAudioSnapshot): void => {
+  if (!isRaceAudioUnlocked()) return;
 
-  const inPit =
-    snap.playerBoxing &&
-    (snap.pitPhase === "in" || snap.pitPhase === "stopped" || snap.pitPhase === "out");
-
-  if (inPit) startPitBed();
-  else stopPitBed();
-
-  const engineActive =
-    (snap.racing || snap.phase === "starting" || snap.phase === "ready") &&
-    !inPit &&
-    snap.phase !== "finished" &&
-    snap.phase !== "landing";
-
-  if (engineActive) {
-    startEngineSynth();
-    const speed =
-      snap.phase === "starting" || snap.phase === "ready" ? 0 : snap.speedMps;
-    if (Math.abs(speed - engineSpeedMps) > 0.35 || snap.phase === "starting" || snap.phase === "ready") {
-      updateEngineSpeed(speed);
-    }
-  } else {
-    stopEngineSynth();
-  }
+  syncRaceLoopAudio(snap);
 
   if (snap.startRedDelta > 0) {
     playStartRedLight(snap.startLightCount);
   }
   if (snap.startGreenEdge) playStartGreenHold();
   if (snap.lightsOutEdge) playLightsOut();
-
-  if (snap.pitPhase === "stopped" && !snap.pitServiceDone) {
-    playWheelGuns(snap.pitStopElapsed);
-    if (snap.pitStopElapsed > 0.05 && snap.pitStopElapsed < 0.25) playJack(true);
-    if (snap.pitStopElapsed > 2.1 && snap.pitStopElapsed < 2.35) playJack(false);
-  }
 
   if (snap.justReleased) playReleaseBeep();
   if (snap.unsafeDelta) playUnsafeSting();
@@ -494,6 +662,15 @@ export const syncRaceAudio = async (snap: RaceAudioSnapshot): Promise<void> => {
 export const disposeRaceAudio = (): void => {
   stopPitBed();
   stopEngineSynth();
+  if (ctx) {
+    void ctx.close();
+    ctx = null;
+  }
+  unlocked = false;
+  buffersLoaded = false;
+  engineLoopPrimed = false;
+  pitLoopPrimed = false;
+  buffersReadyListeners.clear();
 };
 
 export type { CueId };

@@ -22,11 +22,11 @@ const OVERTAKE_LANE_M = Math.min(MAX_LANE_M, LANE_STEP_M * 1.75);
 /** Same-lane if lateral centers closer than this. */
 export const LANE_OVERLAP_M = FIA.carWidthM * 1.05;
 /** Lane lerp rate (higher = snappier cut). */
-const LANE_RESPONSIVENESS = 5.5;
-/** Faster commit when pulling out to pass — kept moderate to avoid wall-slapping zig-zag. */
-const LANE_OVERTAKE_RESPONSIVENESS = 8.5;
+const LANE_RESPONSIVENESS = 4.8;
+/** Commit when a clear pass lane exists — moderate to avoid snap zig-zag. */
+const LANE_OVERTAKE_RESPONSIVENESS = 6.2;
 /** Lateral move (m) before gap-control uses target lane, not current. */
-const LANE_CHANGE_COMMIT_M = 0.65;
+const LANE_CHANGE_COMMIT_M = 0.85;
 /** Ease off grid stagger after lights out (ms). */
 const GRID_RELEASE_MS = 5500;
 
@@ -110,9 +110,9 @@ const clampLane = (m: number): number => Math.max(-MAX_LANE_M, Math.min(MAX_LANE
 /** Once a pass starts, don't flip to the opposite side mid-move (causes rapid wall hits). */
 const commitLaneTarget = (car: CarState, proposed: number): number => {
   const move = car.laneTargetM - car.laneOffsetM;
-  if (Math.abs(move) < 0.35) return clampLane(proposed);
+  if (Math.abs(move) < LANE_CHANGE_COMMIT_M) return clampLane(proposed);
   const proposedMove = proposed - car.laneOffsetM;
-  if (Math.abs(proposedMove) < 0.2) return car.laneTargetM;
+  if (Math.abs(proposedMove) < 0.3) return car.laneTargetM;
   if (Math.sign(proposedMove) !== Math.sign(move)) return car.laneTargetM;
   return clampLane(proposed);
 };
@@ -180,8 +180,12 @@ const onStraight = (lapProgress: number): boolean => {
   return curvatureAt(t) < 0.12 && peakCurvatureAhead(t, 90) < 0.22;
 };
 
-const overtakeLookAheadM = (lapProgress: number): number =>
-  onStraight(lapProgress) ? 22 : MIN_GAP_M * 2;
+/** Faster cars need more corridor look-ahead (push closes gaps before a cut can start). */
+const overtakeLookAheadM = (lapProgress: number, speedMps: number): number => {
+  const base = onStraight(lapProgress) ? 22 : MIN_GAP_M * 2;
+  const speedScale = 0.75 + Math.min(1.35, speedMps / 75);
+  return base * speedScale;
+};
 
 const overtakeTriggerM = (lapProgress: number): number =>
   onStraight(lapProgress) ? OVERTAKE_TRIGGER_M : MIN_GAP_M;
@@ -201,7 +205,7 @@ const pickOvertakeLane = (
   const current = self.laneOffsetM;
   const candidates: number[] = [];
   const straight = onStraight(self.lapProgress);
-  const lookAhead = overtakeLookAheadM(self.lapProgress);
+  const lookAhead = overtakeLookAheadM(self.lapProgress, self.speedMps);
 
   const outside = outsideOvertakeOffsetM(self.lapProgress);
   if (outside !== null) {
@@ -239,15 +243,18 @@ const pickOvertakeLane = (
   }
 
   const seen = new Set<number>();
+  const free: number[] = [];
   for (const lane of candidates) {
     const clamped = clampLane(lane);
     const key = Math.round(clamped * 20);
     if (seen.has(key)) continue;
     seen.add(key);
     if (sameCorridor(clamped, current) && Math.abs(clamped - current) < 0.35) continue;
-    if (corridorFree(cars, self, clamped, lookAhead, blocker.id)) return clamped;
+    if (corridorFree(cars, self, clamped, lookAhead, blocker.id)) free.push(clamped);
   }
-  return null;
+  if (free.length === 0) return null;
+  free.sort((a, b) => Math.abs(a - current) - Math.abs(b - current));
+  return free[0] ?? null;
 };
 
 /** Grid column lane at race start (for gradual release after lights out). */
@@ -382,35 +389,17 @@ export const resolveTraffic = (
           raceElapsedMs,
         );
         alpha = overtakeAlpha;
-      } else if (onStraight(car.lapProgress)) {
-        const dive =
-          passTarget.laneOffsetM >= 0 ? -OVERTAKE_LANE_M : OVERTAKE_LANE_M;
-        if (!sameCorridor(dive, car.laneOffsetM)) {
-          car.laneTargetM = blendGridRelease(
-            car,
-            commitLaneTarget(car, clampLane(dive)),
-            raceElapsedMs,
-          );
-          alpha = overtakeAlpha;
-        } else if (passGap < MIN_GAP_M) {
-          applyGapSpeedCap(car, passTarget, passGap, dt);
-          car.laneTargetM = car.laneOffsetM;
-        } else {
-          car.laneTargetM = blendGridRelease(
-            car,
-            commitLaneTarget(car, pickFreeRacingLine(cars, car, "attacking")),
-            raceElapsedMs,
-          );
-        }
-      } else if (passGap < MIN_GAP_M) {
-        applyGapSpeedCap(car, passTarget, passGap, dt);
-        car.laneTargetM = car.laneOffsetM;
+      } else if (isChangingLane(car)) {
+        // Finish the move already in progress — don't flip while mid-pass.
+        car.laneTargetM = blendGridRelease(car, car.laneTargetM, raceElapsedMs);
+        alpha = overtakeAlpha;
       } else {
-        car.laneTargetM = blendGridRelease(
-          car,
-          commitLaneTarget(car, pickFreeRacingLine(cars, car, "attacking")),
-          raceElapsedMs,
-        );
+        // No clear corridor — hold lane and follow; don't hunt side-to-side.
+        car.laneTargetM = blendGridRelease(car, car.laneOffsetM, raceElapsedMs);
+        alpha = baseAlpha;
+        if (passGap < MIN_GAP_M) {
+          applyGapSpeedCap(car, passTarget, passGap, dt);
+        }
       }
     } else {
       car.blockId = null;

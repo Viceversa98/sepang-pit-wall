@@ -71,7 +71,7 @@
       >
         <button
           type="button"
-          class="rounded-sm px-2.5 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors {race.cameraMode ===
+          class="min-h-11 rounded-sm px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors {race.cameraMode ===
           'overview'
             ? 'bg-amber-500/25 text-amber-100'
             : 'text-slate-400 hover:text-slate-200'}"
@@ -85,7 +85,7 @@
         </button>
         <button
           type="button"
-          class="rounded-sm px-2.5 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors {race.cameraMode ===
+          class="min-h-11 rounded-sm px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors {race.cameraMode ===
           'follow'
             ? 'text-white'
             : 'text-slate-400 hover:text-slate-200'}"
