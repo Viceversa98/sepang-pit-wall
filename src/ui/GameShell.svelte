@@ -190,7 +190,7 @@
             : ""}
       />
       <section
-        class="relative z-0 h-full min-h-[min(38dvh,360px)] w-full overflow-hidden {layoutMode === 'mobilePortrait'
+        class="relative z-0 h-full min-h-[min(38dvh,360px)] w-full touch-none overflow-hidden overscroll-none {layoutMode === 'mobilePortrait'
           ? 'order-1 row-start-1'
           : layoutMode === 'mobileLandscape'
             ? 'order-2'

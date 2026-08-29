@@ -98,6 +98,8 @@ export class RaceScene {
   private adaptiveDpr: AdaptiveDpr | null = null;
   private runtimeDprCap = 1.5;
   private pendingResize = false;
+  private lastCanvasWidth = 0;
+  private lastCanvasHeight = 0;
 
   init(hostElement: HTMLElement): void {
     this.hostElement = hostElement;
@@ -305,11 +307,14 @@ export class RaceScene {
 
     this.pendingResize = false;
     const { width, height } = size;
+    if (width === this.lastCanvasWidth && height === this.lastCanvasHeight) return;
+
+    this.lastCanvasWidth = width;
+    this.lastCanvasHeight = height;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    // CSS fills the host; buffer size comes from host metrics only (no layout feedback loop).
-    this.renderer.setSize(width, height, false);
+    this.renderer.setSize(width, height, true);
   }
 
   dispose(): void {

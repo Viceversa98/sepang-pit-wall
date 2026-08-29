@@ -18,13 +18,11 @@
     resizeObserver.observe(hostEl);
 
     window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
 
     return () => {
       stopBurstResize();
       resizeObserver.disconnect();
       window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
     };
   });
 

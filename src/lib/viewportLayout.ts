@@ -12,19 +12,32 @@ export type HostElementSizeOptions = {
   allowViewportFallback?: boolean;
 };
 
-/** Reliable host dimensions for WebGL resize (handles mobile dynamic viewport + flex settle). */
+/**
+ * Reliable host dimensions for WebGL resize.
+ * Prefer layout box (clientWidth/Height) — stable during visualViewport scroll / URL bar shifts.
+ */
 export const getHostElementSize = (
   host: HTMLElement,
   opts: HostElementSizeOptions = {},
 ): HostElementSize | null => {
   const allowViewportFallback = opts.allowViewportFallback !== false;
-  const rect = host.getBoundingClientRect();
-  let width = Math.round(rect.width);
-  let height = Math.round(rect.height);
+
+  let width = host.clientWidth;
+  let height = host.clientHeight;
+
+  // Absolute inset-0 hosts can read 0 before paint; parent section owns the layout box.
+  if (width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) {
+    const parent = host.parentElement;
+    if (parent) {
+      width = parent.clientWidth;
+      height = parent.clientHeight;
+    }
+  }
 
   if (width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) {
-    width = host.clientWidth;
-    height = host.clientHeight;
+    const rect = host.getBoundingClientRect();
+    width = Math.round(rect.width);
+    height = Math.round(rect.height);
   }
 
   const viewport = window.visualViewport;
@@ -39,6 +52,18 @@ export const getHostElementSize = (
 
   if (width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) return null;
   return { width, height };
+};
+
+/** Coalesce rapid resize events (visualViewport noise, flex settle) into one rAF. */
+export const coalesceHostResize = (callback: () => void): (() => void) => {
+  let rafId = 0;
+  return () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      callback();
+    });
+  };
 };
 
 /** Re-run resize after mount — mobile URL bars and flex grids often settle late. */
@@ -62,7 +87,7 @@ export const getRaceLayoutMode = (): RaceLayoutMode => {
 export const isMobileRaceLayout = (mode: RaceLayoutMode): boolean =>
   mode === "mobilePortrait" || mode === "mobileLandscape";
 
-/** Subscribe to layout mode changes (resize, orientation, visualViewport). */
+/** Subscribe to layout mode changes (resize, orientation). */
 export const subscribeRaceLayoutMode = (
   callback: (mode: RaceLayoutMode) => void,
 ): (() => void) => {
@@ -72,16 +97,12 @@ export const subscribeRaceLayoutMode = (
   window.addEventListener("resize", update);
   window.addEventListener("orientationchange", update);
 
-  const viewport = window.visualViewport;
-  viewport?.addEventListener("resize", update);
-
   const narrowQuery = window.matchMedia("(max-width: 767px)");
   narrowQuery.addEventListener("change", update);
 
   return () => {
     window.removeEventListener("resize", update);
     window.removeEventListener("orientationchange", update);
-    viewport?.removeEventListener("resize", update);
     narrowQuery.removeEventListener("change", update);
   };
 };

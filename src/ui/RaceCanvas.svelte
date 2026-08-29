@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { addFrameRenderer } from "@/lib/frameLoop";
   import {
+    coalesceHostResize,
     scheduleHostResizeBursts,
     subscribeRaceLayoutMode,
   } from "@/lib/viewportLayout";
@@ -50,10 +51,10 @@
 
     const canvas = hostEl.querySelector("canvas");
 
-    const scheduleResize = (): void => {
+    const applyResize = (): void => {
       raceScene?.resize();
-      requestAnimationFrame(() => raceScene?.resize());
     };
+    const scheduleResize = coalesceHostResize(applyResize);
 
     const onLost = (event: Event): void => {
       event.preventDefault();
@@ -77,9 +78,8 @@
 
     const stopLayout = subscribeRaceLayoutMode(() => scheduleResize());
 
-    window.addEventListener("resize", scheduleResize);
-    window.visualViewport?.addEventListener("resize", scheduleResize);
-    window.visualViewport?.addEventListener("scroll", scheduleResize);
+    window.addEventListener("resize", scheduleResize, { passive: true });
+    window.addEventListener("orientationchange", scheduleResize, { passive: true });
 
     void (async () => {
       const nav = navigator as Navigator & {
@@ -100,8 +100,7 @@
       resizeObserver.disconnect();
       stopLayout();
       window.removeEventListener("resize", scheduleResize);
-      window.visualViewport?.removeEventListener("resize", scheduleResize);
-      window.visualViewport?.removeEventListener("scroll", scheduleResize);
+      window.removeEventListener("orientationchange", scheduleResize);
     };
   });
 
@@ -123,7 +122,7 @@
 
 <div
   bind:this={hostEl}
-  class="absolute inset-0 z-0 min-h-[200px] w-full touch-none overflow-hidden bg-[var(--background)]"
+  class="absolute inset-0 z-0 min-h-[200px] w-full touch-none overflow-hidden overscroll-none bg-[var(--background)]"
   aria-hidden="true"
 ></div>
 
