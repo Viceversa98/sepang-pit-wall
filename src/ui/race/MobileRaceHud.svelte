@@ -1,16 +1,25 @@
 <script lang="ts">
   import { PIT_LANE_LIMIT_KMH } from "@/lib/pitStop";
-  import type { RaceLayoutMode } from "@/lib/viewportLayout";
+  import { isMobileRaceLayout, type RaceLayoutMode } from "@/lib/viewportLayout";
   import {
     defaultHud,
+    defaultStrategy,
     defaultTiming,
     syncPolledHud,
+    syncPolledStrategy,
     syncPolledTiming,
     buildTimingTower,
   } from "@/stores/polledRaceTelemetry";
-  import { useRaceStore, type CameraMode } from "@/stores/raceStore";
+  import {
+    useRaceStore,
+    type CameraMode,
+    type EngineMode,
+    type TyreCompound,
+  } from "@/stores/raceStore";
   import TrackMinimap from "@/ui/TrackMinimap.svelte";
-  import { pwButtonClass } from "@/ui/pwButton";
+  import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
+  import StartLightsStrip from "@/ui/race/StartLightsStrip.svelte";
+  import { COMPOUND_COPY, ENGINE_COPY } from "@/ui/race/strategyCopy";
 
   type Props = {
     layoutMode: RaceLayoutMode;
@@ -38,7 +47,28 @@
   let race = $state(useRaceStore.getState());
   let timing = $state(defaultTiming());
   let hud = $state(defaultHud());
+  let strategy = $state(defaultStrategy());
   let timingSheetOpen = $state(false);
+
+  const selectClass = pwSelectClass("disabled:cursor-not-allowed disabled:opacity-45");
+
+  let strategyPollPaused = $state(false);
+
+  const applyStrategySnapshot = (next: ReturnType<typeof syncPolledStrategy>) => {
+    if (
+      strategy.engineMode === next.engineMode &&
+      strategy.currentCompound === next.currentCompound &&
+      strategy.isBoxing === next.isBoxing &&
+      strategy.pitPhase === next.pitPhase &&
+      strategy.pitHoldTraffic === next.pitHoldTraffic &&
+      strategy.pitServiceDone === next.pitServiceDone &&
+      strategy.tireWear === next.tireWear &&
+      strategy.rainIntensity === next.rainIntensity
+    ) {
+      return;
+    }
+    strategy = next;
+  };
 
   $effect(() => {
     return useRaceStore.subscribe((s) => {
@@ -50,6 +80,7 @@
     const sync = () => {
       timing = syncPolledTiming();
       hud = syncPolledHud();
+      if (!strategyPollPaused) applyStrategySnapshot(syncPolledStrategy());
     };
     sync();
     const id = window.setInterval(sync, 100);
@@ -57,6 +88,11 @@
   });
 
   const isPortrait = $derived(layoutMode === "mobilePortrait");
+  const isMobile = $derived(isMobileRaceLayout(layoutMode));
+  const showRaceControls = $derived(race.phase === "racing" || race.phase === "finished");
+  const stintSetupDisabled = $derived(
+    race.phase === "starting" || race.phase === "finished",
+  );
   const towerRows = $derived(isPortrait ? 6 : 3);
   const tower = $derived(buildTimingTower(timing.standings, towerRows));
   const playerOutsideTop = $derived.by(() => {
@@ -105,6 +141,25 @@
   const handleCloseTiming = () => {
     timingSheetOpen = false;
   };
+
+  const handleEngineChange = (e: Event) => {
+    const value = (e.currentTarget as HTMLSelectElement).value as EngineMode;
+    useRaceStore.getState().setEngineMode(value);
+  };
+
+  const handleCompoundChange = (e: Event) => {
+    const value = (e.currentTarget as HTMLSelectElement).value as TyreCompound;
+    useRaceStore.getState().setCompound(value);
+  };
+
+  const handleStrategySelectFocus = () => {
+    strategyPollPaused = true;
+  };
+
+  const handleStrategySelectBlur = () => {
+    strategyPollPaused = false;
+    applyStrategySnapshot(syncPolledStrategy());
+  };
 </script>
 
 {#if race.phase !== "landing"}
@@ -143,13 +198,16 @@
           <button
             type="button"
             class={pwButtonClass("secondary", "touch", { className: "shrink-0 px-3" })}
-            aria-label="Open timing tower"
+            aria-label={race.phase === "racing" ? "Open timing and strategy" : "Open timing tower"}
             aria-expanded={timingSheetOpen}
             onclick={handleOpenTiming}
           >
-            Timing
+            {race.phase === "racing" ? "Strategy" : "Timing"}
           </button>
         </div>
+        {#if isMobile}
+          <StartLightsStrip />
+        {/if}
         {#if statusChips.length > 0}
           <div class="flex gap-1 overflow-x-auto pb-0.5" role="status" aria-live="polite">
             {#each statusChips as chip (chip)}
@@ -164,13 +222,21 @@
       </div>
 
       <!-- Minimap dot (portrait) -->
+      {#if showRaceControls}
       <div
         class="pointer-events-auto absolute bottom-3 left-3 z-10 w-12 overflow-hidden rounded-sm border border-white/20 bg-black/70 shadow-lg"
         aria-label="Track minimap"
       >
         <TrackMinimap compact />
       </div>
+      {/if}
     {:else}
+      {#if isMobile}
+        <div class="pointer-events-none absolute top-2 left-2 z-10 max-w-[38%]">
+          <StartLightsStrip />
+        </div>
+      {/if}
+
       <!-- Landscape: compact timing card top-right -->
       <aside
         class="pointer-events-auto absolute top-2 right-2 z-20 flex w-[min(200px,42%)] flex-col gap-1.5 rounded-sm border border-white/20 bg-black/70 p-2 text-slate-50 backdrop-blur-md"
@@ -250,6 +316,7 @@
     {/if}
 
     <!-- Camera controls: bottom-right on portrait, left column on landscape -->
+    {#if showRaceControls}
     <div
       class="pointer-events-auto absolute z-20 flex gap-1 rounded-sm border border-white/20 bg-black/65 p-0.5 backdrop-blur-sm {isPortrait
         ? 'bottom-3 right-3'
@@ -289,20 +356,23 @@
         YOU
       </button>
     </div>
+    {/if}
   </div>
 
   {#if timingSheetOpen && isPortrait}
     <div
-      class="absolute inset-0 z-40 flex items-end justify-center bg-slate-950/70 backdrop-blur-sm"
+      class="pointer-events-none absolute inset-0 z-40 flex items-end justify-center bg-slate-950/70 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Timing tower"
+      aria-label="Timing and strategy"
     >
       <div
         class="pointer-events-auto max-h-[70dvh] w-full overflow-y-auto border-t border-cyan-500/30 bg-[var(--pw-panel)] px-4 py-4 pb-[max(1rem,var(--safe-bottom))]"
       >
         <div class="mb-3 flex items-center justify-between gap-2">
-          <p class="font-mono text-[10px] tracking-[0.28em] text-cyan-300 uppercase">Timing tower</p>
+          <p class="font-mono text-[10px] tracking-[0.28em] text-cyan-300 uppercase">
+            Timing & strategy
+          </p>
           <button
             type="button"
             class={pwButtonClass("secondary", "touch")}
@@ -312,6 +382,49 @@
             Close
           </button>
         </div>
+        {#if race.phase === "racing"}
+          <section class="mb-3 space-y-2 border-b border-white/10 pb-3" aria-labelledby="mobile-stint-label">
+            <p id="mobile-stint-label" class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase">
+              Stint levers
+            </p>
+            <label class="block space-y-1">
+              <span class="font-mono text-[10px] text-slate-400">Engine</span>
+              <select
+                class="{selectClass} min-h-11 touch-manipulation"
+                value={strategy.engineMode}
+                disabled={stintSetupDisabled}
+                aria-label="Engine mode"
+                onfocus={handleStrategySelectFocus}
+                onblur={handleStrategySelectBlur}
+                onchange={handleEngineChange}
+              >
+                <option value="push">Push</option>
+                <option value="standard">Standard</option>
+                <option value="save">Save</option>
+              </select>
+            </label>
+            <p class="text-[11px] text-slate-500">{ENGINE_COPY[strategy.engineMode]}</p>
+            <label class="block space-y-1">
+              <span class="font-mono text-[10px] text-slate-400">Compound (queues box)</span>
+              <select
+                class="{selectClass} min-h-11 touch-manipulation"
+                value={strategy.currentCompound}
+                disabled={stintSetupDisabled}
+                aria-label="Tyre compound"
+                onfocus={handleStrategySelectFocus}
+                onblur={handleStrategySelectBlur}
+                onchange={handleCompoundChange}
+              >
+                <option value="soft">Soft</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="wet">Wet</option>
+              </select>
+            </label>
+            <p class="text-[11px] text-slate-500">{COMPOUND_COPY[strategy.currentCompound]}</p>
+          </section>
+        {/if}
         <p class="font-mono text-xl tabular-nums text-amber-200">
           {formatLapTime(timing.currentLapTimeMs)}
         </p>

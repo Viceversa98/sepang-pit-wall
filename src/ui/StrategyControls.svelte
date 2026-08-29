@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { WeatherOverride } from "@/lib/weather";
-  import { defaultStrategy, syncPolledStrategy } from "@/stores/polledRaceTelemetry";
+  import { portraitStrategyPanelClass } from "@/lib/mobileRaceLayout";
+  import { defaultStrategy, syncPolledStrategy, type PolledStrategyState } from "@/stores/polledRaceTelemetry";
   import {
     useRaceStore,
     type EngineMode,
@@ -8,6 +9,7 @@
   } from "@/stores/raceStore";
   import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
   import { useRaceLayoutGetter } from "@/ui/race/raceLayoutContext";
+  import { COMPOUND_COPY, ENGINE_COPY } from "@/ui/race/strategyCopy";
 
   type Props = {
     class?: string;
@@ -19,23 +21,31 @@
   const layoutMode = $derived(getLayoutMode());
   const mobilePortrait = $derived(layoutMode === "mobilePortrait");
 
-  const ENGINE_COPY: Record<EngineMode, string> = {
-    push: "Attack — burns tyres",
-    standard: "Balanced pace",
-    save: "Conserve — slower",
-  };
-
-  const COMPOUND_COPY: Record<TyreCompound, string> = {
-    soft: "Fast · fragile",
-    medium: "Race default",
-    hard: "Dry endurance",
-    intermediate: "Light–medium rain",
-    wet: "Heavy wet only",
-  };
-
   const selectClass = pwSelectClass("disabled:cursor-not-allowed disabled:opacity-45");
   let strategy = $state(defaultStrategy());
   let race = $state(useRaceStore.getState());
+
+  const portraitPanelMaxClass = $derived(
+    portraitStrategyPanelClass(mobilePortrait, race.phase),
+  );
+
+  let strategyPollPaused = $state(false);
+
+  const applyStrategySnapshot = (next: PolledStrategyState) => {
+    if (
+      strategy.engineMode === next.engineMode &&
+      strategy.currentCompound === next.currentCompound &&
+      strategy.isBoxing === next.isBoxing &&
+      strategy.pitPhase === next.pitPhase &&
+      strategy.pitHoldTraffic === next.pitHoldTraffic &&
+      strategy.pitServiceDone === next.pitServiceDone &&
+      strategy.tireWear === next.tireWear &&
+      strategy.rainIntensity === next.rainIntensity
+    ) {
+      return;
+    }
+    strategy = next;
+  };
 
   $effect(() => {
     return useRaceStore.subscribe((s) => {
@@ -44,9 +54,10 @@
   });
 
   $effect(() => {
-    strategy = syncPolledStrategy();
+    applyStrategySnapshot(syncPolledStrategy());
     const id = window.setInterval(() => {
-      strategy = syncPolledStrategy();
+      if (strategyPollPaused) return;
+      applyStrategySnapshot(syncPolledStrategy());
     }, 100);
     return () => window.clearInterval(id);
   });
@@ -91,10 +102,24 @@
 
   const handleBox = () => useRaceStore.getState().requestBoxNextLap();
   const handleRelease = () => useRaceStore.getState().releaseFromBox();
+
+  const handleStrategySelectFocus = () => {
+    strategyPollPaused = true;
+  };
+
+  const handleStrategySelectBlur = () => {
+    strategyPollPaused = false;
+    applyStrategySnapshot(syncPolledStrategy());
+  };
+
+  const showStintLevers = $derived(
+    !mobilePortrait || preRaceGrid || race.phase === "racing",
+  );
+  const showWeatherControl = $derived(!mobilePortrait || preRaceGrid);
 </script>
 
 <aside
-  class="pit-panel flex h-full min-h-0 flex-col border-b border-amber-500/15 bg-[var(--pw-panel)] text-white md:border-b-0 md:border-r {mobilePortrait && !preRaceGrid ? 'max-h-[38dvh]' : ''} {className}"
+  class="pit-panel relative z-20 flex h-full min-h-0 flex-col overflow-hidden border-b border-amber-500/15 bg-[var(--pw-panel)] text-white md:border-b-0 md:border-r {portraitPanelMaxClass} {className}"
   aria-label="Strategy controls"
 >
   <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 md:p-4">
@@ -182,7 +207,7 @@
     </section>
   {/if}
 
-  {#if !mobilePortrait || preRaceGrid}
+  {#if showStintLevers}
   <section class="space-y-2" aria-labelledby="stint-label">
     <p id="stint-label" class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase">
       Stint levers
@@ -191,10 +216,12 @@
     <label class="block space-y-1">
       <span class="font-mono text-[10px] text-slate-400">Engine</span>
       <select
-        class={selectClass}
+        class="{selectClass} min-h-11 touch-manipulation"
         value={strategy.engineMode}
         disabled={stintSetupDisabled}
         aria-label="Engine mode"
+        onfocus={handleStrategySelectFocus}
+        onblur={handleStrategySelectBlur}
         onchange={handleEngineChange}
       >
         <option value="push">Push</option>
@@ -209,10 +236,12 @@
         {preRaceGrid ? "Starting compound" : "Compound (queues box)"}
       </span>
       <select
-        class={selectClass}
+        class="{selectClass} min-h-11 touch-manipulation"
         value={strategy.currentCompound}
         disabled={stintSetupDisabled}
         aria-label="Tyre compound"
+        onfocus={handleStrategySelectFocus}
+        onblur={handleStrategySelectBlur}
         onchange={handleCompoundChange}
       >
         <option value="soft">Soft</option>
@@ -224,13 +253,17 @@
     </label>
     <p class="text-[11px] text-slate-500">{COMPOUND_COPY[strategy.currentCompound]}</p>
   </section>
+  {/if}
 
+  {#if showWeatherControl}
   <label class="block space-y-1">
     <span class="font-mono text-[10px] text-slate-400">Weather scenario</span>
     <select
-      class={selectClass}
+      class="{selectClass} min-h-11 touch-manipulation"
       value={race.weatherOverride}
       aria-label="Weather scenario"
+      onfocus={handleStrategySelectFocus}
+      onblur={handleStrategySelectBlur}
       onchange={handleWeatherChange}
     >
       <option value="auto">Auto (Sepang API)</option>
@@ -245,10 +278,21 @@
       <div class="mt-auto shrink-0 border-t border-white/10 pt-2 font-mono text-[10px] leading-snug text-slate-500">
         Wear → box → pits → rain.
       </div>
+    {:else}
+      <p class="mt-auto shrink-0 border-t border-white/10 pt-2 text-center font-mono text-[9px] text-slate-500">
+        <a
+          href="https://www.alifasraf.asia/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-cyan-400/90 transition hover:text-cyan-300"
+        >
+          Built by Alif Asraf
+        </a>
+      </p>
     {/if}
   </div>
 
-  {#if mobilePortrait}
+  {#if mobilePortrait && race.phase === "racing"}
     <section
       class="shrink-0 space-y-2 border-t border-amber-500/20 bg-[var(--pw-panel)] p-3 pb-[max(0.75rem,var(--safe-bottom))]"
       aria-labelledby="box-call-label-mobile"

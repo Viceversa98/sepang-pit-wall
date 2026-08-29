@@ -167,7 +167,7 @@
       </div>
     </header>
 
-    {#if race.phase === "ready"}
+    {#if race.phase === "ready" && layoutMode !== "mobilePortrait"}
       <div
         class="shrink-0 border-b border-cyan-500/25 bg-cyan-950/30 px-3 py-1.5 font-mono text-[10px] text-cyan-100/90 md:px-4 md:py-2 md:text-[11px]"
         role="status"
@@ -183,11 +183,15 @@
 
     <div class="grid min-h-0 flex-1 overflow-hidden {raceGridClass}">
       <StrategyControls
-        class={layoutMode === "mobilePortrait" ? "order-2" : layoutMode === "mobileLandscape" ? "order-1" : ""}
+        class={layoutMode === "mobilePortrait"
+          ? "order-2 row-start-2"
+          : layoutMode === "mobileLandscape"
+            ? "order-1"
+            : ""}
       />
       <section
-        class="relative h-full min-h-0 w-full overflow-hidden {layoutMode === 'mobilePortrait'
-          ? 'order-1'
+        class="relative z-0 h-full min-h-0 w-full overflow-hidden {layoutMode === 'mobilePortrait'
+          ? 'order-1 row-start-1'
           : layoutMode === 'mobileLandscape'
             ? 'order-2'
             : ''}"
@@ -205,11 +209,13 @@
         {#if race.phase === "finished" && race.playMode !== "mission"}
           <PodiumOverlay />
         {/if}
-        <AuthorChatBubble
-          variant="inline"
-          align="right"
-          class={layoutMode === "mobilePortrait" ? "bottom-16 right-3 pr-0" : "bottom-4 right-4 pr-0"}
-        />
+        {#if layoutMode !== "mobilePortrait"}
+          <AuthorChatBubble
+            variant="inline"
+            align="right"
+            class="bottom-4 right-4 pr-0"
+          />
+        {/if}
       </section>
     </div>
   </div>

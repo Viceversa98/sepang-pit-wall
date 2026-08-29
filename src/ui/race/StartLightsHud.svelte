@@ -19,9 +19,12 @@
     });
   });
 
+  const mobile = $derived(isMobileRaceLayout(layoutMode));
+
   const visible = $derived(
     (race.phase === "ready" || race.phase === "starting" || race.startLightsOut) &&
-      race.cameraMode !== "follow",
+      race.cameraMode !== "follow" &&
+      !mobile,
   );
 
   const label = $derived(
@@ -45,11 +48,8 @@
           ? "text-emerald-300"
           : "text-red-200",
   );
-  const mobile = $derived(isMobileRaceLayout(layoutMode));
 
-  const topOffset = $derived(
-    mobile && layoutMode === "mobilePortrait" ? "top-[28%]" : mobile ? "top-[14%]" : "top-[18%]",
-  );
+  const topOffset = $derived(mobile ? "top-[14%]" : "top-[18%]");
 </script>
 
 {#if visible}
