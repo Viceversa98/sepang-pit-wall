@@ -23,9 +23,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
     headers: crossOriginIsolationHeaders,
   },
   preview: {
+    host: true,
     headers: crossOriginIsolationHeaders,
   },
   worker: {

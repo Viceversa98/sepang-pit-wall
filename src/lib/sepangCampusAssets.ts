@@ -1,4 +1,4 @@
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { CampusBuildingId } from "@/lib/sepangCampusLayout";
 
 /**
@@ -6,27 +6,31 @@ import type { CampusBuildingId } from "@/lib/sepangCampusLayout";
  */
 export const CAMPUS_GLB: Partial<Record<CampusBuildingId, string>> = {};
 
+const BASE = import.meta.env.BASE_URL;
+
 export const defaultCampusGlbUrl = (id: CampusBuildingId): string =>
-  `/models/sepang/${id}.glb`;
+  `${BASE}models/sepang/${id}.glb`;
 
 export const campusGltfUrl = (id: CampusBuildingId): string =>
   CAMPUS_GLB[id] ?? defaultCampusGlbUrl(id);
 
 const loader = new GLTFLoader();
+const gltfCache = new Map<string, Promise<GLTF>>();
 
-export const campusGlbExists = async (url: string): Promise<boolean> => {
-  try {
-    const res = await fetch(url, { method: "HEAD" });
-    return res.ok;
-  } catch {
-    return false;
+export const loadCampusGltf = (url: string): Promise<GLTF> => {
+  let pending = gltfCache.get(url);
+  if (!pending) {
+    pending = loader.loadAsync(url).catch((err) => {
+      gltfCache.delete(url);
+      throw err;
+    });
+    gltfCache.set(url, pending);
   }
+  return pending;
 };
 
 export const preloadCampusGlbs = (): void => {
   for (const url of Object.values(CAMPUS_GLB)) {
-    if (url) void loader.loadAsync(url);
+    if (url) void loadCampusGltf(url);
   }
 };
-
-export const loadCampusGltf = (url: string) => loader.loadAsync(url);

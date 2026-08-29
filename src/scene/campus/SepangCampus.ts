@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import {
-  campusGlbExists,
-  campusGltfUrl,
-  loadCampusGltf,
-  preloadCampusGlbs,
-} from "@/lib/sepangCampusAssets";
+  campusGlbHasMeshes,
+  fitCampusGlbToPlacement,
+  prepareCampusGlbForScene,
+} from "@/lib/fitCampusGlb";
+import { campusGltfUrl, loadCampusGltf } from "@/lib/sepangCampusAssets";
 import { resolveCampusPlacements, type CampusPlacement } from "@/lib/sepangCampusLayout";
 import { buildCampusKit } from "@/scene/campus/buildKit";
 import { buildOsmBackdrop, disposeOsmBackdrop } from "@/scene/campus/buildOsmBackdrop";
@@ -36,12 +36,16 @@ const trySwapCampusGlb = async (
   procedural: THREE.Group,
 ): Promise<void> => {
   const url = campusGltfUrl(placement.id);
-  if (!(await campusGlbExists(url))) return;
 
   try {
     const gltf = await loadCampusGltf(url);
     const model = gltf.scene.clone(true);
-    model.name = `campus-glb-${placement.id}`;
+    if (!campusGlbHasMeshes(model)) return;
+
+    fitCampusGlbToPlacement(model, placement);
+    prepareCampusGlbForScene(model);
+    model.name = `campus-glb-${placement.id}-${placement.segmentIndex}`;
+
     root.remove(procedural);
     disposeGroup(procedural);
     root.add(model);
@@ -51,8 +55,6 @@ const trySwapCampusGlb = async (
 };
 
 export const createSepangCampus = (): SepangCampusHandle => {
-  preloadCampusGlbs();
-
   const group = new THREE.Group();
   group.name = "sepang-campus";
   const entries: CampusEntry[] = [];
