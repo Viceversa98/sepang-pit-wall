@@ -83,24 +83,13 @@ const ensureCtx = (): AudioContext | null => {
 
 const audioContextRunning = (c: AudioContext): boolean => c.state === "running";
 
-/** Kick resume + silent buffer in the same user-gesture turn (no await). */
+/** Sync resume only — must run inside a user gesture. No src.start() while suspended (autoplay warnings). */
 const primeAudioContextSync = (c: AudioContext): void => {
   if (audioContextRunning(c)) return;
   try {
     void c.resume();
   } catch {
-    /* continue to silent priming */
-  }
-  if (audioContextRunning(c)) return;
-  const silent = c.createBuffer(1, 1, c.sampleRate);
-  const src = c.createBufferSource();
-  src.buffer = silent;
-  src.connect(c.destination);
-  src.start(0);
-  try {
-    void c.resume();
-  } catch {
-    /* async resume may still succeed */
+    /* resume may still settle asynchronously */
   }
 };
 

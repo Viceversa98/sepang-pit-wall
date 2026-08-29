@@ -134,12 +134,10 @@ export const mountRaceAudioBridge = (): (() => void) => {
     });
   };
 
-  // Landing / mission buttons may unlock before this bridge subscribes — catch up immediately.
+  // Sync only if a prior gesture already unlocked audio — never create/resume on mount (autoplay policy).
   if (isRaceAudioUnlocked()) {
     ensureRaceAudioRunning();
     handleSlice(lastSlice);
-  } else {
-    tryUnlockAndSync();
   }
 
   const unlockOpts: AddEventListenerOptions = { capture: true, passive: true };
@@ -149,7 +147,9 @@ export const mountRaceAudioBridge = (): (() => void) => {
   window.addEventListener("click", tryUnlockAndSync, unlockOpts);
 
   const onVisibility = () => {
-    if (document.visibilityState === "visible") tryUnlockAndSync();
+    if (document.visibilityState !== "visible" || !isRaceAudioUnlocked()) return;
+    ensureRaceAudioRunning();
+    handleSlice(lastSlice);
   };
   document.addEventListener("visibilitychange", onVisibility);
 

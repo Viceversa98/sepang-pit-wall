@@ -12,7 +12,7 @@
   let hostEl: HTMLDivElement | undefined = $state();
   let raceScene: RaceScene | null = null;
   let removeRenderer: (() => void) | null = null;
-  let webglPaused = false;
+  let webglPaused = $state(false);
   let cameraMode = $state(useRaceStore.getState().cameraMode);
   let showBraveWebGlHint = $state(false);
   let showIsolationHint = $state(false);
@@ -118,6 +118,13 @@
   const handleDismissIsolationHint = (): void => {
     showIsolationHint = false;
   };
+
+  const handleRecoverWebGl = (): void => {
+    if (!webglPaused || !hostEl) return;
+    mountScene();
+    raceScene?.resize();
+    webglPaused = false;
+  };
 </script>
 
 <div
@@ -125,6 +132,27 @@
   class="absolute inset-0 z-0 min-h-[200px] w-full touch-none overflow-hidden overscroll-none bg-[var(--background)]"
   aria-hidden="true"
 ></div>
+
+{#if webglPaused}
+  <div
+    class="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+    role="alert"
+  >
+    <div class="max-w-xs rounded-sm border border-amber-400/40 bg-amber-950/90 px-4 py-3 text-center">
+      <p class="font-mono text-[11px] leading-snug text-amber-100">
+        3D view paused — GPU context lost. Tap here to reload the track.
+      </p>
+      <button
+        type="button"
+        class="mt-3 min-h-11 w-full rounded-sm border border-amber-400/50 bg-amber-500/90 px-4 font-mono text-xs text-slate-950"
+        aria-label="Reload 3D race view"
+        onclick={handleRecoverWebGl}
+      >
+        Reload track
+      </button>
+    </div>
+  </div>
+{/if}
 
 {#if showIsolationHint}
   <div
