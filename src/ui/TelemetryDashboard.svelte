@@ -136,18 +136,22 @@
 
   <TrackMinimap />
 
-  {#if timing.isBoxing}
+  {#if timing.isBoxing || timing.pendingBox}
     <p class="font-mono text-[10px] tracking-wide text-cyan-200/90 uppercase">
-      Pit {PIT_LANE_LIMIT_KMH}
-      <span class="ml-1.5 normal-case tracking-normal text-white/55">
-        {timing.pitPhase === "in"
-          ? "lane in"
-          : timing.pitPhase === "out"
-            ? "lane out"
-            : timing.pitHoldTraffic
-              ? "hold"
-              : "service"}
-      </span>
+      {#if timing.isBoxing}
+        Pit {PIT_LANE_LIMIT_KMH}
+        <span class="ml-1.5 normal-case tracking-normal text-white/55">
+          {timing.pitPhase === "in"
+            ? "lane in"
+            : timing.pitPhase === "out"
+              ? "lane out"
+              : timing.pitHoldTraffic
+                ? "hold"
+                : "service"}
+        </span>
+      {:else}
+        Box this lap
+      {/if}
     </p>
   {/if}
   {#if timing.unsafeReleasePenaltyMs > 0}

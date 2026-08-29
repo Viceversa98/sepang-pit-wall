@@ -1,22 +1,8 @@
 <script lang="ts">
   import { PIT_LANE_LIMIT_KMH } from "@/lib/pitStop";
   import { defaultHud, syncPolledHud } from "@/stores/polledRaceTelemetry";
-  import { useRaceStore, type CameraMode, type PitPhase } from "@/stores/raceStore";
-
-  const pitPhaseLabel = (
-    phase: PitPhase | null,
-    hold: boolean,
-    pending: boolean,
-    boxing: boolean,
-  ): string | null => {
-    if (!boxing && !pending) return null;
-    if (!boxing && pending) return "Box next lap — pit entry";
-    if (phase === "in") return "In pit lane";
-    if (phase === "stopped" && hold) return "Hold — traffic";
-    if (phase === "stopped") return "Servicing — tire change";
-    if (phase === "out") return "Pit exit";
-    return "In the pits";
-  };
+  import { useRaceStore, type CameraMode } from "@/stores/raceStore";
+  import { pitPhaseLabel } from "@/ui/race/pitStatusLabel";
 
   let race = $state(useRaceStore.getState());
   let hud = $state(defaultHud());

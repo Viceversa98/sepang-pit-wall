@@ -18,9 +18,12 @@
     type TyreCompound,
   } from "@/stores/raceStore";
   import TrackMinimap from "@/ui/TrackMinimap.svelte";
-  import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
+  import { pwButtonClass } from "@/ui/pwButton";
   import StartLightsStrip from "@/ui/race/StartLightsStrip.svelte";
+  import StrategySegmentGroup from "@/ui/race/StrategySegmentGroup.svelte";
+  import { pitStatusChip } from "@/ui/race/pitStatusLabel";
   import { COMPOUND_COPY, ENGINE_COPY } from "@/ui/race/strategyCopy";
+  import { COMPOUND_SEGMENTS, ENGINE_SEGMENTS } from "@/ui/race/strategySegments";
 
   type Props = {
     layoutMode: RaceLayoutMode;
@@ -51,15 +54,12 @@
   let strategy = $state(defaultStrategy());
   let timingSheetOpen = $state(false);
 
-  const selectClass = pwSelectClass("disabled:cursor-not-allowed disabled:opacity-45");
-
-  let strategyPollPaused = $state(false);
-
   const applyStrategySnapshot = (next: ReturnType<typeof syncPolledStrategy>) => {
     if (
       strategy.engineMode === next.engineMode &&
       strategy.currentCompound === next.currentCompound &&
       strategy.isBoxing === next.isBoxing &&
+      strategy.pendingBox === next.pendingBox &&
       strategy.pitPhase === next.pitPhase &&
       strategy.pitHoldTraffic === next.pitHoldTraffic &&
       strategy.pitServiceDone === next.pitServiceDone &&
@@ -81,7 +81,7 @@
     const sync = () => {
       timing = syncPolledTiming();
       hud = syncPolledHud();
-      if (!strategyPollPaused) applyStrategySnapshot(syncPolledStrategy());
+      applyStrategySnapshot(syncPolledStrategy());
     };
     sync();
     const id = window.setInterval(sync, 100);
@@ -118,7 +118,8 @@
     if (race.blueFlagActive) chips.push("Blue flag");
     if (race.playerPenalties.length > 0) chips.push(`Penalty · ${race.playerPenalties.join(", ")}`);
     if (hud.incidentLabel) chips.push(hud.incidentLabel);
-    if (timing.isBoxing) chips.push("In pits");
+    const pitChip = pitStatusChip(hud.pitPhase, hud.pitHoldTraffic, hud.pendingBox, hud.isBoxing);
+    if (pitChip) chips.push(pitChip);
     return chips;
   });
 
@@ -147,24 +148,15 @@
     timingSheetOpen = false;
   };
 
-  const handleEngineChange = (e: Event) => {
-    const value = (e.currentTarget as HTMLSelectElement).value as EngineMode;
-    useRaceStore.getState().setEngineMode(value);
+  const handleEngineSelect = (value: string) => {
+    useRaceStore.getState().setEngineMode(value as EngineMode);
   };
 
-  const handleCompoundChange = (e: Event) => {
-    const value = (e.currentTarget as HTMLSelectElement).value as TyreCompound;
-    useRaceStore.getState().setCompound(value);
+  const handleCompoundSelect = (value: string) => {
+    useRaceStore.getState().setCompound(value as TyreCompound);
   };
 
-  const handleStrategySelectFocus = () => {
-    strategyPollPaused = true;
-  };
-
-  const handleStrategySelectBlur = () => {
-    strategyPollPaused = false;
-    applyStrategySnapshot(syncPolledStrategy());
-  };
+  const handleBox = () => useRaceStore.getState().requestBoxNextLap();
 </script>
 
 {#if race.phase !== "landing"}
@@ -388,46 +380,48 @@
           </button>
         </div>
         {#if race.phase === "racing"}
-          <section class="mb-3 space-y-2 border-b border-white/10 pb-3" aria-labelledby="mobile-stint-label">
+          <section class="mb-3 space-y-3 border-b border-white/10 pb-3" aria-labelledby="mobile-stint-label">
             <p id="mobile-stint-label" class="font-mono text-[9px] tracking-[0.22em] text-slate-500 uppercase">
               Stint levers
             </p>
-            <label class="block space-y-1">
-              <span class="font-mono text-[10px] text-slate-400">Engine</span>
-              <select
-                class="{selectClass} min-h-11 touch-manipulation"
-                value={strategy.engineMode}
-                disabled={stintSetupDisabled}
-                aria-label="Engine mode"
-                onfocus={handleStrategySelectFocus}
-                onblur={handleStrategySelectBlur}
-                onchange={handleEngineChange}
-              >
-                <option value="push">Push</option>
-                <option value="standard">Standard</option>
-                <option value="save">Save</option>
-              </select>
-            </label>
+            <StrategySegmentGroup
+              label="Engine"
+              labelId="mobile-engine-label"
+              value={strategy.engineMode}
+              options={ENGINE_SEGMENTS}
+              disabled={stintSetupDisabled}
+              onSelect={handleEngineSelect}
+            />
             <p class="text-[11px] text-slate-500">{ENGINE_COPY[strategy.engineMode]}</p>
-            <label class="block space-y-1">
-              <span class="font-mono text-[10px] text-slate-400">Compound (queues box)</span>
-              <select
-                class="{selectClass} min-h-11 touch-manipulation"
-                value={strategy.currentCompound}
-                disabled={stintSetupDisabled}
-                aria-label="Tyre compound"
-                onfocus={handleStrategySelectFocus}
-                onblur={handleStrategySelectBlur}
-                onchange={handleCompoundChange}
-              >
-                <option value="soft">Soft</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="wet">Wet</option>
-              </select>
-            </label>
+            <StrategySegmentGroup
+              label="Compound (queues box)"
+              labelId="mobile-compound-label"
+              value={strategy.currentCompound}
+              options={COMPOUND_SEGMENTS}
+              disabled={stintSetupDisabled}
+              onSelect={handleCompoundSelect}
+            />
             <p class="text-[11px] text-slate-500">{COMPOUND_COPY[strategy.currentCompound]}</p>
+            <button
+              type="button"
+              class="{pwButtonClass(strategy.isBoxing ? 'secondary' : 'primary', 'touch', {
+                fullWidth: true,
+                className: strategy.pendingBox && !strategy.isBoxing ? 'ring-2 ring-cyan-400/60' : '',
+              })}"
+              disabled={stintSetupDisabled}
+              aria-label={strategy.isBoxing
+                ? "In the box"
+                : strategy.pendingBox
+                  ? "Box queued this lap"
+                  : "Box next lap"}
+              onclick={handleBox}
+            >
+              {strategy.isBoxing
+                ? "In the box…"
+                : strategy.pendingBox
+                  ? "Box this lap"
+                  : "Box next lap"}
+            </button>
           </section>
         {/if}
         <p class="font-mono text-xl tabular-nums text-amber-200">
@@ -439,9 +433,13 @@
         <div class="mt-3">
           <TrackMinimap />
         </div>
-        {#if timing.isBoxing}
+        {#if timing.isBoxing || timing.pendingBox}
           <p class="mt-2 font-mono text-[10px] text-cyan-200/90 uppercase">
-            Pit {PIT_LANE_LIMIT_KMH}
+            {#if timing.isBoxing}
+              Pit {PIT_LANE_LIMIT_KMH}
+            {:else}
+              Box this lap
+            {/if}
           </p>
         {/if}
         <ul class="mt-3 space-y-0.5 border-t border-white/10 pt-2 font-mono text-[11px]" role="list">

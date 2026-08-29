@@ -24,6 +24,7 @@ export type PolledStrategyState = {
   engineMode: EngineMode;
   currentCompound: TyreCompound;
   isBoxing: boolean;
+  pendingBox: boolean;
   pitPhase: PitPhase | null;
   pitHoldTraffic: boolean;
   pitServiceDone: boolean;
@@ -35,6 +36,7 @@ export const defaultStrategy = (): PolledStrategyState => ({
   engineMode: "standard",
   currentCompound: "medium",
   isBoxing: false,
+  pendingBox: false,
   pitPhase: null,
   pitHoldTraffic: false,
   pitServiceDone: false,
@@ -48,6 +50,7 @@ export const syncPolledStrategy = (): PolledStrategyState => {
     engineMode: s.engineMode,
     currentCompound: s.currentCompound,
     isBoxing: s.isBoxing,
+    pendingBox: s.pendingBox,
     pitPhase: s.pitPhase,
     pitHoldTraffic: s.pitHoldTraffic,
     pitServiceDone: s.pitServiceDone,
@@ -70,6 +73,7 @@ export type PolledTimingState = {
   rainIntensity: number;
   pitPhase: PitPhase | null;
   isBoxing: boolean;
+  pendingBox: boolean;
   pitHoldTraffic: boolean;
   unsafeReleasePenaltyMs: number;
 };
@@ -87,6 +91,7 @@ export const defaultTiming = (): PolledTimingState => ({
   rainIntensity: 0.2,
   pitPhase: null,
   isBoxing: false,
+  pendingBox: false,
   pitHoldTraffic: false,
   unsafeReleasePenaltyMs: 0,
 });
@@ -106,6 +111,7 @@ export const syncPolledTiming = (): PolledTimingState => {
     rainIntensity: s.rainIntensity,
     pitPhase: s.pitPhase,
     isBoxing: s.isBoxing,
+    pendingBox: s.pendingBox,
     pitHoldTraffic: s.pitHoldTraffic,
     unsafeReleasePenaltyMs: s.unsafeReleasePenaltyMs,
   };

@@ -9,7 +9,9 @@
   } from "@/stores/raceStore";
   import { pwButtonClass, pwSelectClass } from "@/ui/pwButton";
   import { useRaceLayoutGetter } from "@/ui/race/raceLayoutContext";
+  import StrategySegmentGroup from "@/ui/race/StrategySegmentGroup.svelte";
   import { COMPOUND_COPY, ENGINE_COPY } from "@/ui/race/strategyCopy";
+  import { COMPOUND_SEGMENTS, ENGINE_SEGMENTS } from "@/ui/race/strategySegments";
 
   type Props = {
     class?: string;
@@ -36,6 +38,7 @@
       strategy.engineMode === next.engineMode &&
       strategy.currentCompound === next.currentCompound &&
       strategy.isBoxing === next.isBoxing &&
+      strategy.pendingBox === next.pendingBox &&
       strategy.pitPhase === next.pitPhase &&
       strategy.pitHoldTraffic === next.pitHoldTraffic &&
       strategy.pitServiceDone === next.pitServiceDone &&
@@ -77,6 +80,7 @@
         (strategy.currentCompound === "intermediate" || strategy.currentCompound === "wet")),
   );
   const urgeBox = $derived(wearCritical || rainRisk);
+  const boxQueued = $derived(strategy.pendingBox && !strategy.isBoxing);
   const canRelease = $derived(
     race.phase === "racing" &&
       strategy.isBoxing &&
@@ -84,6 +88,14 @@
       strategy.pitServiceDone &&
       strategy.pitHoldTraffic,
   );
+
+  const handleEngineSelect = (value: string) => {
+    useRaceStore.getState().setEngineMode(value as EngineMode);
+  };
+
+  const handleCompoundSelect = (value: string) => {
+    useRaceStore.getState().setCompound(value as TyreCompound);
+  };
 
   const handleEngineChange = (e: Event) => {
     const value = (e.currentTarget as HTMLSelectElement).value as EngineMode;
@@ -153,7 +165,7 @@
     </div>
   {/if}
 
-  {#if urgeBox && race.phase === "racing" && !strategy.isBoxing}
+  {#if urgeBox && race.phase === "racing" && !strategy.isBoxing && !strategy.pendingBox}
     <div
       class="rounded-sm border border-rose-400/45 bg-rose-950/50 px-3 py-2 text-xs text-rose-100"
       role="alert"
@@ -176,15 +188,27 @@
       </p>
       <button
         type="button"
-        class="{pwButtonClass(strategy.isBoxing ? 'secondary' : 'primary', 'md', {
+        class="{pwButtonClass(strategy.isBoxing || boxQueued ? 'secondary' : 'primary', 'md', {
           fullWidth: true,
-          className: urgeBox && !strategy.isBoxing ? 'ring-2 ring-rose-400/70' : '',
+          className: urgeBox && !strategy.isBoxing && !boxQueued ? 'ring-2 ring-rose-400/70' : boxQueued ? 'ring-2 ring-cyan-400/60' : '',
         })}"
         {disabled}
-        aria-label={strategy.isBoxing ? "In the box" : urgeBox ? "Box now urgent" : "Box next lap"}
+        aria-label={strategy.isBoxing
+          ? "In the box"
+          : boxQueued
+            ? "Box queued this lap"
+            : urgeBox
+              ? "Box now urgent"
+              : "Box next lap"}
         onclick={handleBox}
       >
-        {strategy.isBoxing ? "In the box…" : urgeBox ? "Box now (urgent)" : "Box next lap"}
+        {strategy.isBoxing
+          ? "In the box…"
+          : boxQueued
+            ? "Box this lap"
+            : urgeBox
+              ? "Box now (urgent)"
+              : "Box next lap"}
       </button>
       {#if canRelease}
         <button
@@ -215,6 +239,15 @@
 
     <label class="block space-y-1">
       <span class="font-mono text-[10px] text-slate-400">Engine</span>
+      {#if mobilePortrait}
+        <StrategySegmentGroup
+          label=""
+          value={strategy.engineMode}
+          options={ENGINE_SEGMENTS}
+          disabled={stintSetupDisabled}
+          onSelect={handleEngineSelect}
+        />
+      {:else}
       <select
         class="{selectClass} min-h-11 touch-manipulation"
         value={strategy.engineMode}
@@ -228,6 +261,7 @@
         <option value="standard">Standard</option>
         <option value="save">Save</option>
       </select>
+      {/if}
     </label>
     <p class="text-[11px] text-slate-500">{ENGINE_COPY[strategy.engineMode]}</p>
 
@@ -235,6 +269,15 @@
       <span class="font-mono text-[10px] text-slate-400">
         {preRaceGrid ? "Starting compound" : "Compound (queues box)"}
       </span>
+      {#if mobilePortrait}
+        <StrategySegmentGroup
+          label=""
+          value={strategy.currentCompound}
+          options={COMPOUND_SEGMENTS}
+          disabled={stintSetupDisabled}
+          onSelect={handleCompoundSelect}
+        />
+      {:else}
       <select
         class="{selectClass} min-h-11 touch-manipulation"
         value={strategy.currentCompound}
@@ -250,6 +293,7 @@
         <option value="intermediate">Intermediate</option>
         <option value="wet">Wet</option>
       </select>
+      {/if}
     </label>
     <p class="text-[11px] text-slate-500">{COMPOUND_COPY[strategy.currentCompound]}</p>
   </section>
@@ -305,15 +349,27 @@
       </p>
       <button
         type="button"
-        class="{pwButtonClass(strategy.isBoxing ? 'secondary' : 'primary', 'touch', {
+        class="{pwButtonClass(strategy.isBoxing || boxQueued ? 'secondary' : 'primary', 'touch', {
           fullWidth: true,
-          className: urgeBox && !strategy.isBoxing ? 'ring-2 ring-rose-400/70' : '',
+          className: urgeBox && !strategy.isBoxing && !boxQueued ? 'ring-2 ring-rose-400/70' : boxQueued ? 'ring-2 ring-cyan-400/60' : '',
         })}"
         {disabled}
-        aria-label={strategy.isBoxing ? "In the box" : urgeBox ? "Box now urgent" : "Box next lap"}
+        aria-label={strategy.isBoxing
+          ? "In the box"
+          : boxQueued
+            ? "Box queued this lap"
+            : urgeBox
+              ? "Box now urgent"
+              : "Box next lap"}
         onclick={handleBox}
       >
-        {strategy.isBoxing ? "In the box…" : urgeBox ? "Box now (urgent)" : "Box next lap"}
+        {strategy.isBoxing
+          ? "In the box…"
+          : boxQueued
+            ? "Box this lap"
+            : urgeBox
+              ? "Box now (urgent)"
+              : "Box next lap"}
       </button>
       {#if canRelease}
         <button

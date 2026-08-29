@@ -160,6 +160,8 @@ type RaceStore = {
   currentCompound: TyreCompound;
   engineMode: EngineMode;
   isBoxing: boolean;
+  /** Queued box call — car still on track until pit entry. */
+  pendingBox: boolean;
   pitPhase: PitPhase | null;
   pitHoldTraffic: boolean;
   pitServiceDone: boolean;
@@ -532,7 +534,8 @@ const syncPlayerMirrors = (cars: CarState[], rain = 0.2) => {
     tireWear: player.tireWear,
     currentCompound: player.currentCompound,
     engineMode: player.engineMode,
-    isBoxing: player.isBoxing || player.pendingBox,
+    isBoxing: !!player.isBoxing,
+    pendingBox: !!player.pendingBox && !player.isBoxing,
     pitPhase: player.pitPhase,
     pitHoldTraffic: player.pitHoldTraffic,
     pitServiceDone: player.pitServiceDone,
