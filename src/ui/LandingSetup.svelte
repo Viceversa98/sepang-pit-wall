@@ -177,6 +177,8 @@
             Engine
           </span>
           <select
+            id="setup-engine-mode"
+            name="engineMode"
             class={selectClass}
             value={race.engineMode}
             aria-label="Engine mode"
@@ -193,6 +195,8 @@
             Compound
           </span>
           <select
+            id="setup-compound"
+            name="currentCompound"
             class={selectClass}
             value={race.currentCompound}
             aria-label="Tyre compound"

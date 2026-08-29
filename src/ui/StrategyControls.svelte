@@ -249,6 +249,8 @@
         />
       {:else}
       <select
+        id="strategy-engine-mode"
+        name="engineMode"
         class="{selectClass} min-h-11 touch-manipulation"
         value={strategy.engineMode}
         disabled={stintSetupDisabled}
@@ -279,6 +281,8 @@
         />
       {:else}
       <select
+        id="strategy-compound"
+        name="currentCompound"
         class="{selectClass} min-h-11 touch-manipulation"
         value={strategy.currentCompound}
         disabled={stintSetupDisabled}
@@ -303,6 +307,8 @@
   <label class="block space-y-1">
     <span class="font-mono text-[10px] text-slate-400">Weather scenario</span>
     <select
+      id="strategy-weather"
+      name="weatherOverride"
       class="{selectClass} min-h-11 touch-manipulation"
       value={race.weatherOverride}
       aria-label="Weather scenario"
