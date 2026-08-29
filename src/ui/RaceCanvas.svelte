@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { addFrameRenderer } from "@/lib/frameLoop";
+  import { subscribeRaceLayoutMode } from "@/lib/viewportLayout";
   import { RaceScene } from "@/scene/RaceScene";
   import { useRaceStore } from "@/stores/raceStore";
 
@@ -35,17 +36,33 @@
       raceScene?.dispose();
       raceScene = new RaceScene();
       raceScene.init(hostEl!);
+      scheduleResize();
     };
     canvas?.addEventListener("webglcontextlost", onLost, false);
 
-    const onResize = (): void => raceScene?.resize();
-    window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
+    const scheduleResize = (): void => {
+      raceScene?.resize();
+      requestAnimationFrame(() => raceScene?.resize());
+    };
+
+    scheduleResize();
+
+    const resizeObserver = new ResizeObserver(() => scheduleResize());
+    resizeObserver.observe(hostEl);
+
+    const stopLayout = subscribeRaceLayoutMode(() => scheduleResize());
+
+    window.addEventListener("resize", scheduleResize);
+    window.visualViewport?.addEventListener("resize", scheduleResize);
+    window.visualViewport?.addEventListener("scroll", scheduleResize);
 
     return () => {
       canvas?.removeEventListener("webglcontextlost", onLost);
-      window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
+      resizeObserver.disconnect();
+      stopLayout();
+      window.removeEventListener("resize", scheduleResize);
+      window.visualViewport?.removeEventListener("resize", scheduleResize);
+      window.visualViewport?.removeEventListener("scroll", scheduleResize);
     };
   });
 
@@ -59,5 +76,5 @@
 
 <div
   bind:this={hostEl}
-  class="h-full min-h-[280px] w-full overflow-hidden bg-[var(--background)] [&>canvas]:h-full [&>canvas]:w-full"
+  class="absolute inset-0 z-0 min-h-[200px] w-full overflow-hidden bg-[var(--background)] [&>canvas]:block [&>canvas]:h-full [&>canvas]:w-full"
 ></div>

@@ -286,11 +286,17 @@ export class RaceScene {
 
   resize(): void {
     if (!this.hostElement || !this.renderer || !this.camera) return;
-    const { clientWidth, clientHeight } = this.hostElement;
-    if (clientWidth === 0 || clientHeight === 0) return;
-    this.camera.aspect = clientWidth / clientHeight;
+    let w = this.hostElement.clientWidth;
+    let h = this.hostElement.clientHeight;
+    if (w < 1 || h < 1) {
+      const rect = this.hostElement.getBoundingClientRect();
+      w = Math.round(rect.width);
+      h = Math.round(rect.height);
+    }
+    if (w < 1 || h < 1) return;
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(clientWidth, clientHeight, false);
+    this.renderer.setSize(w, h, false);
   }
 
   dispose(): void {

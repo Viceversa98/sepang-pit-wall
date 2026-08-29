@@ -186,7 +186,7 @@
         class={layoutMode === "mobilePortrait" ? "order-2" : layoutMode === "mobileLandscape" ? "order-1" : ""}
       />
       <section
-        class="relative min-h-0 overflow-hidden {layoutMode === 'mobilePortrait'
+        class="relative h-full min-h-0 w-full overflow-hidden {layoutMode === 'mobilePortrait'
           ? 'order-1'
           : layoutMode === 'mobileLandscape'
             ? 'order-2'
