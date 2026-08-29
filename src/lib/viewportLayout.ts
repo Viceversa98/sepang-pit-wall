@@ -46,7 +46,7 @@ export const scheduleHostResizeBursts = (callback: () => void): (() => void) => 
   callback();
   requestAnimationFrame(callback);
 
-  const timers = [100, 300, 600, 1000].map((ms) => window.setTimeout(callback, ms));
+  const timers = [100, 300, 600, 1000, 2000].map((ms) => window.setTimeout(callback, ms));
   return () => {
     for (const id of timers) window.clearTimeout(id);
   };

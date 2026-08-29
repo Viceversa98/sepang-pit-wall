@@ -50,6 +50,11 @@
 
     const canvas = hostEl.querySelector("canvas");
 
+    const scheduleResize = (): void => {
+      raceScene?.resize();
+      requestAnimationFrame(() => raceScene?.resize());
+    };
+
     const onLost = (event: Event): void => {
       event.preventDefault();
       webglPaused = true;
@@ -64,15 +69,11 @@
     canvas?.addEventListener("webglcontextlost", onLost, false);
     canvas?.addEventListener("webglcontextrestored", onRestored, false);
 
-    const scheduleResize = (): void => {
-      raceScene?.resize();
-      requestAnimationFrame(() => raceScene?.resize());
-    };
-
     const stopBurstResize = scheduleHostResizeBursts(scheduleResize);
 
     const resizeObserver = new ResizeObserver(() => scheduleResize());
     resizeObserver.observe(hostEl);
+    if (hostEl.parentElement) resizeObserver.observe(hostEl.parentElement);
 
     const stopLayout = subscribeRaceLayoutMode(() => scheduleResize());
 

@@ -97,6 +97,7 @@ export class RaceScene {
   private rainCount = DEFAULT_RAIN_COUNT;
   private adaptiveDpr: AdaptiveDpr | null = null;
   private runtimeDprCap = 1.5;
+  private pendingResize = false;
 
   init(hostElement: HTMLElement): void {
     this.hostElement = hostElement;
@@ -215,6 +216,8 @@ export class RaceScene {
 
   update(dt: number): void {
     if (this.disposed) return;
+    if (this.pendingResize) this.resize();
+    if (this.disposed) return;
 
     const state = useRaceStore.getState();
     // Racing: read per-frame sim state (60+ Hz) — the Svelte store only syncs at 20 Hz.
@@ -294,9 +297,13 @@ export class RaceScene {
 
   resize(): void {
     if (!this.hostElement || !this.renderer || !this.camera) return;
-    const size = getHostElementSize(this.hostElement);
-    if (!size) return;
+    const size = getHostElementSize(this.hostElement, { allowViewportFallback: false });
+    if (!size) {
+      this.pendingResize = true;
+      return;
+    }
 
+    this.pendingResize = false;
     const { width, height } = size;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
     this.camera.aspect = width / height;
