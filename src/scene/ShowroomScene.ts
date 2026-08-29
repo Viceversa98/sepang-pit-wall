@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { getHostElementSize } from "@/lib/viewportLayout";
 import { createF1CarMesh } from "@/scene/F1CarMesh";
 import { useRaceStore } from "@/stores/raceStore";
 
@@ -66,12 +67,15 @@ export class ShowroomScene {
   }
 
   resize(): void {
-    if (!this.hostElement) return;
-    const w = this.hostElement.clientWidth;
-    const h = this.hostElement.clientHeight;
-    this.camera.aspect = w / h;
+    if (!this.hostElement || !this.renderer || !this.camera) return;
+    const size = getHostElementSize(this.hostElement);
+    if (!size) return;
+
+    const { width, height } = size;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h);
+    this.renderer.setSize(width, height, true);
   }
 
   dispose(): void {

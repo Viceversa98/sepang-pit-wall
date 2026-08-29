@@ -38,6 +38,7 @@ import {
   type RacePhase,
 } from "@/stores/raceStore";
 import { detectRaceSceneQuality, type RaceSceneQuality } from "@/lib/qualityTier";
+import { getHostElementSize } from "@/lib/viewportLayout";
 
 const DEFAULT_RAIN_COUNT = 3200;
 const OVERVIEW_HEIGHT = 100;
@@ -286,17 +287,14 @@ export class RaceScene {
 
   resize(): void {
     if (!this.hostElement || !this.renderer || !this.camera) return;
-    let w = this.hostElement.clientWidth;
-    let h = this.hostElement.clientHeight;
-    if (w < 1 || h < 1) {
-      const rect = this.hostElement.getBoundingClientRect();
-      w = Math.round(rect.width);
-      h = Math.round(rect.height);
-    }
-    if (w < 1 || h < 1) return;
-    this.camera.aspect = w / h;
+    const size = getHostElementSize(this.hostElement);
+    if (!size) return;
+
+    const { width, height } = size;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.dprCap));
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h, true);
+    this.renderer.setSize(width, height, true);
   }
 
   dispose(): void {

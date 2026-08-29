@@ -1,5 +1,42 @@
 export type RaceLayoutMode = "desktop" | "mobilePortrait" | "mobileLandscape";
 
+export type HostElementSize = {
+  width: number;
+  height: number;
+};
+
+/** Reliable host dimensions for WebGL resize (handles mobile dynamic viewport + flex settle). */
+export const getHostElementSize = (host: HTMLElement): HostElementSize | null => {
+  const rect = host.getBoundingClientRect();
+  let width = Math.round(rect.width);
+  let height = Math.round(rect.height);
+
+  if (width < 1 || height < 1) {
+    width = host.clientWidth;
+    height = host.clientHeight;
+  }
+
+  const viewport = window.visualViewport;
+  if ((width < 1 || height < 1) && viewport) {
+    width = Math.round(viewport.width);
+    height = Math.round(viewport.height);
+  }
+
+  if (width < 1 || height < 1) return null;
+  return { width, height };
+};
+
+/** Re-run resize after mount — mobile URL bars and flex grids often settle late. */
+export const scheduleHostResizeBursts = (callback: () => void): (() => void) => {
+  callback();
+  requestAnimationFrame(callback);
+
+  const timers = [100, 300, 600].map((ms) => window.setTimeout(callback, ms));
+  return () => {
+    for (const id of timers) window.clearTimeout(id);
+  };
+};
+
 export const getRaceLayoutMode = (): RaceLayoutMode => {
   const w = window.innerWidth;
   const h = window.innerHeight;

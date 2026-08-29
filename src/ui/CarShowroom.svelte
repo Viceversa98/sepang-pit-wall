@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { scheduleHostResizeBursts } from "@/lib/viewportLayout";
   import { ShowroomScene } from "@/scene/ShowroomScene";
 
   let hostEl: HTMLDivElement | undefined = $state();
@@ -11,8 +12,20 @@
     showroom.init(hostEl);
 
     const onResize = (): void => showroom?.resize();
+    const stopBurstResize = scheduleHostResizeBursts(onResize);
+
+    const resizeObserver = new ResizeObserver(onResize);
+    resizeObserver.observe(hostEl);
+
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+
+    return () => {
+      stopBurstResize();
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
   });
 
   onDestroy(() => {
