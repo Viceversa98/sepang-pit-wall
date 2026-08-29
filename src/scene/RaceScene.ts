@@ -28,6 +28,13 @@ import { createClouds, sampleRainInField, type CloudsHandle } from "@/scene/clou
 import { PitStopCrewField } from "@/scene/PitStopCrew";
 import { metresToUnits } from "@/lib/trackCurve";
 import {
+  clampPanDelta,
+  isFiniteVec3,
+  RACE_CAMERA_FAR,
+  RACE_CAMERA_NEAR,
+  safeLookAt,
+} from "@/lib/cameraSafety";
+import {
   FIELD_META,
   gridIndexForCar,
   gridSlotForCar,
@@ -116,7 +123,7 @@ export class RaceScene {
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 900);
+    this.camera = new THREE.PerspectiveCamera(42, 1, RACE_CAMERA_NEAR, RACE_CAMERA_FAR);
     this.camera.position.set(0, 160, 140);
 
     this.atmosphere = createAtmosphere(this.scene, this.renderer, state.rainIntensity);
@@ -517,6 +524,7 @@ export class RaceScene {
 
     if (state.overviewFollow && this.orbitControls) {
       const worldPos = this.playerWorldPosition(player, entry, state.phase);
+      if (!isFiniteVec3(worldPos)) return;
 
       if (this.overviewSnapKey !== "locked") {
         this.overviewSnapKey = "locked";
@@ -526,16 +534,23 @@ export class RaceScene {
           worldPos.z + OVERVIEW_BACK,
         );
         this.camera.up.set(0, 1, 0);
-        this.camera.lookAt(worldPos.x, worldPos.y + 2, worldPos.z);
         this.orbitControls.target.set(worldPos.x, worldPos.y + 2, worldPos.z);
+        safeLookAt(this.camera, this.orbitControls.target);
         this.overviewPrevTarget.copy(this.orbitControls.target);
         this.orbitControls.update();
       } else {
         this.overviewNextTarget.copy(worldPos);
         this.overviewNextTarget.y += 2;
         this.overviewDelta.copy(this.overviewNextTarget).sub(this.overviewPrevTarget);
+        clampPanDelta(this.overviewDelta);
+        if (!isFiniteVec3(this.overviewDelta)) return;
+
         this.orbitControls.target.copy(this.overviewNextTarget);
         this.camera.position.add(this.overviewDelta);
+        if (!isFiniteVec3(this.camera.position)) {
+          this.overviewSnapKey = "";
+          return;
+        }
         this.overviewPrevTarget.copy(this.overviewNextTarget);
       }
     } else if (!state.overviewFollow) {

@@ -1,5 +1,10 @@
 import * as THREE from "three";
 import { sampleCarPose, type CarWorldPose } from "@/lib/carPose";
+import {
+  clampSimDelta,
+  isFiniteVec3,
+  safeLookAt,
+} from "@/lib/cameraSafety";
 import { VEHICLE_FORWARD } from "@/lib/vehicleOrientation";
 import { metresToUnits } from "@/lib/trackCurve";
 import type { CameraMode, CarState, RacePhase } from "@/stores/raceStore";
@@ -74,6 +79,11 @@ export const updateFollowCamera = (
 
   state.lookAt.copy(position).addScaledVector(tangent, LOOK_AHEAD);
 
+  if (!isFiniteVec3(state.desired) || !isFiniteVec3(state.lookAt)) {
+    state.snapped = false;
+    return;
+  }
+
   // During racing the mesh already moves smoothly every frame — lagging the
   // camera behind the car while lookAt snaps instantly was the jerk (overview
   // avoids this by rigidly translating camera + target together).
@@ -83,10 +93,10 @@ export const updateFollowCamera = (
     camera.position.copy(state.desired);
     state.snapped = true;
   } else {
-    const t = 1 - Math.exp(-LERP * delta);
+    const t = 1 - Math.exp(-LERP * clampSimDelta(delta));
     camera.position.lerp(state.desired, t);
   }
 
   camera.up.copy(state.up);
-  camera.lookAt(state.lookAt);
+  safeLookAt(camera, state.lookAt);
 };
