@@ -11,6 +11,9 @@ const BASE = import.meta.env.BASE_URL;
 export const defaultCampusGlbUrl = (id: CampusBuildingId): string =>
   `${BASE}models/sepang/${id}.glb`;
 
+/** Single batched environment — one HTTP request instead of 15+ per-building GLBs. */
+export const CAMPUS_ENV_GLB_URL = `${BASE}models/sepang/campus-env.glb`;
+
 export const campusGltfUrl = (id: CampusBuildingId): string =>
   CAMPUS_GLB[id] ?? defaultCampusGlbUrl(id);
 

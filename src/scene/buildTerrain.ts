@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { prepareStaticMesh } from "@/lib/staticMesh";
 import { getHeightmapData, sampleTerrainHeight } from "@/lib/terrainHeight";
 
 export type TerrainBuildResult = {
@@ -39,6 +40,7 @@ export const buildTerrain = (): TerrainBuildResult => {
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = "sepang-terrain";
   mesh.receiveShadow = true;
+  prepareStaticMesh(mesh);
 
   return {
     mesh,

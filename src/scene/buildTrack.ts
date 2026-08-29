@@ -16,6 +16,7 @@ import {
   metresToUnits,
 } from "@/lib/trackCurve";
 import { sampleTerrainHeight } from "@/lib/terrainHeight";
+import { prepareStaticMesh } from "@/lib/staticMesh";
 import { createAsphaltTextures } from "@/scene/textures/asphaltTextures";
 import { FIELD_META } from "@/stores/raceStore";
 
@@ -264,6 +265,8 @@ export const buildTrack = (
   }
 
   for (const stripe of stripeMeshes) group.add(stripe);
+
+  prepareStaticMesh(group);
 
   return {
     group,

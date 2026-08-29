@@ -1,8 +1,10 @@
 import * as THREE from "three";
 
 /** Race overview + chase — Sepang campus fits inside this frustum. */
-export const RACE_CAMERA_NEAR = 0.5;
-export const RACE_CAMERA_FAR = 5000;
+export const RACE_CAMERA_NEAR = 1.0;
+/** Wider near on mobile — 24-bit depth buffer loses precision at 0.01–0.5 near + large far. */
+export const RACE_CAMERA_NEAR_MOBILE = 2.0;
+export const RACE_CAMERA_FAR = 3000;
 
 /** Max overview target step per frame (prevents physics/worker jumps from flinging the camera). */
 export const MAX_CAMERA_PAN_UNITS_PER_FRAME = 12;

@@ -14,7 +14,7 @@ const HIGH_QUALITY: RaceSceneQuality = {
   dprCap: 1.5,
   antialias: true,
   shadows: true,
-  shadowMapSize: 2048,
+  shadowMapSize: 1024,
   rainCount: 3200,
 };
 

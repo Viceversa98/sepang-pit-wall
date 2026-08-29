@@ -32,6 +32,7 @@ import {
   isFiniteVec3,
   RACE_CAMERA_FAR,
   RACE_CAMERA_NEAR,
+  RACE_CAMERA_NEAR_MOBILE,
   safeLookAt,
 } from "@/lib/cameraSafety";
 import {
@@ -123,7 +124,9 @@ export class RaceScene {
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.runtimeDprCap));
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, RACE_CAMERA_NEAR, RACE_CAMERA_FAR);
+    const cameraNear =
+      this.quality.tier === "mobile" ? RACE_CAMERA_NEAR_MOBILE : RACE_CAMERA_NEAR;
+    this.camera = new THREE.PerspectiveCamera(42, 1, cameraNear, RACE_CAMERA_FAR);
     this.camera.position.set(0, 160, 140);
 
     this.atmosphere = createAtmosphere(this.scene, this.renderer, state.rainIntensity);

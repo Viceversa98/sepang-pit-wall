@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { prepareStaticMesh } from "@/lib/staticMesh";
 import { getPitCurve, getTrackCurve, metresToUnits } from "@/lib/trackCurve";
 import { sampleTerrainHeight } from "@/lib/terrainHeight";
 
@@ -697,6 +698,8 @@ export const buildTrackside = (): TracksideHandle => {
   setInstances(fronds, frondMatrices);
   fronds.castShadow = true;
   group.add(fronds);
+
+  prepareStaticMesh(group);
 
   return {
     group,
