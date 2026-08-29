@@ -7,8 +7,17 @@ export type HostElementSize = {
   height: number;
 };
 
+export type HostElementSizeOptions = {
+  /** When false, never fall back to visualViewport (avoids full-screen buffers in panels). */
+  allowViewportFallback?: boolean;
+};
+
 /** Reliable host dimensions for WebGL resize (handles mobile dynamic viewport + flex settle). */
-export const getHostElementSize = (host: HTMLElement): HostElementSize | null => {
+export const getHostElementSize = (
+  host: HTMLElement,
+  opts: HostElementSizeOptions = {},
+): HostElementSize | null => {
+  const allowViewportFallback = opts.allowViewportFallback !== false;
   const rect = host.getBoundingClientRect();
   let width = Math.round(rect.width);
   let height = Math.round(rect.height);
@@ -19,7 +28,11 @@ export const getHostElementSize = (host: HTMLElement): HostElementSize | null =>
   }
 
   const viewport = window.visualViewport;
-  if ((width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) && viewport) {
+  if (
+    allowViewportFallback &&
+    (width < MIN_HOST_CANVAS_PX || height < MIN_HOST_CANVAS_PX) &&
+    viewport
+  ) {
     width = Math.round(viewport.width);
     height = Math.round(viewport.height);
   }

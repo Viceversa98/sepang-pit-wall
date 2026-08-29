@@ -100,16 +100,16 @@
 
   <div class="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
     <div
-      class="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
+      class="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] lg:items-start"
     >
       <div
-        class="relative h-[34dvh] max-h-[300px] w-full shrink-0 overflow-hidden lg:h-full lg:max-h-none lg:min-h-[220px]"
+        class="relative isolate z-0 h-[34dvh] max-h-[300px] w-full shrink-0 overflow-hidden lg:sticky lg:top-0 lg:h-[min(72dvh,calc(100dvh-7rem))] lg:max-h-[min(72dvh,calc(100dvh-7rem))] lg:min-h-[280px]"
         aria-hidden="true"
       >
         <CarShowroom />
       </div>
 
-      <main class="flex flex-col gap-6 px-6 py-8 pb-4 md:px-12 lg:justify-center lg:py-16">
+      <main class="relative z-10 flex flex-col gap-6 px-6 py-8 pb-4 md:px-12 lg:justify-center lg:py-16">
       <div>
         <Logo variant="horizontal" priority class="h-14 w-auto max-w-[min(100%,20rem)] md:h-20" />
         <p class="font-mono mt-4 text-xs tracking-[0.35em] text-amber-400 uppercase">

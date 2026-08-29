@@ -40,7 +40,7 @@ import {
 import { detectRaceSceneQuality, type RaceSceneQuality } from "@/lib/qualityTier";
 import { AdaptiveDpr } from "@/lib/adaptiveDpr";
 import { getHostElementSize } from "@/lib/viewportLayout";
-import { attachWebGlCanvas } from "@/lib/webglCanvas";
+import { attachOverlayWebGlCanvas } from "@/lib/webglCanvas";
 
 const DEFAULT_RAIN_COUNT = 3200;
 const OVERVIEW_HEIGHT = 100;
@@ -209,7 +209,7 @@ export class RaceScene {
       useRaceStore.getState().unlockOverviewFollow();
     });
 
-    attachWebGlCanvas(this.renderer.domElement, hostElement);
+    attachOverlayWebGlCanvas(this.renderer.domElement, hostElement);
     this.resize();
   }
 
