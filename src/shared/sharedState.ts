@@ -10,7 +10,7 @@
 export const MAX_VEHICLES = 22;
 
 /** Floats per vehicle transform + inputs + telemetry. */
-export const VEHICLE_STRIDE = 21;
+export const VEHICLE_STRIDE = 25;
 
 /** Int32 slots used with Atomics (must stay 4-byte aligned). */
 export const HEADER_I32_COUNT = 16;
@@ -56,6 +56,14 @@ export const VehicleField = {
   groundNormalY: 18,
   flags: 19,
   targetSpeedMps: 20,
+  /** Desired lateral offset in metres (traffic / grid). Path-rail follows this. */
+  laneOffsetM: 21,
+  /** Lap fraction 0–1 from track projection (AI speed profile). */
+  lapProgress: 22,
+  /** Desk grip×control scale for AI envelope (compound / wear / flags). */
+  gripScale: 23,
+  /** 1 normally; DRS_SPEED_MULT when eligible in zone. */
+  drsMult: 24,
 } as const;
 
 export type VehicleFlags = {

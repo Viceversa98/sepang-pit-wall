@@ -14,11 +14,16 @@ export const JACK_LIFT_M = 0.35;
 export const PIT_BRAKE_ZONE_M = 28;
 /** Soft flare toward exit mouth before race-line merge (km/h). */
 export const PIT_EXIT_FLARE_KMH = 95;
+/**
+ * Pit-side track lane at merge (metres). Must stay within path-rail clamp
+ * (±1.15 world-u ≈ ±4.6 m) — centerline (0) caused mid-track snap then
+ * lights-out-style peel to the racing line.
+ */
+export const PIT_EXIT_MERGE_LANE_M = -(1.15 * METRES_PER_UNIT);
 /** Seconds from pit-exit merge to full race pace. */
 export const PIT_EXIT_RACE_BLEND_S = 3.2;
-/** Entry peel / exit blend fractions along pit CAD (long enough to read as peel-right). */
-/** Shorter peel so the car reads on the pit road sooner (was 0.2). */
-export const PIT_POSE_BLEND = 0.12;
+/** Entry peel / exit blend along pit CAD — long enough to leave the racing line smoothly. */
+export const PIT_POSE_BLEND = 0.2;
 
 export type PitPhase = "in" | "stopped" | "out";
 
@@ -106,6 +111,20 @@ export const pitProgressRate = (
   }
 
   return 0;
+};
+
+/** Gameplay m/s matching current pit CAD progress rate (for HUD / exit seed). */
+export const pitSpeedMps = (
+  phase: PitPhase | null,
+  pitProgress: number,
+  boxT: number,
+): number => {
+  if (!phase || phase === "stopped") return 0;
+  const curve = getPitCurve();
+  const lenU = Math.max(1e-3, curve.getLength());
+  const rate = pitProgressRate(phase, pitProgress, boxT);
+  // rate is ΔpitProgress/s → world-u/s → m/s
+  return Math.max(0, rate * lenU * METRES_PER_UNIT);
 };
 
 /** Race-line speed multiplier after pit merge (0 = just exited, 1 = full pace). */

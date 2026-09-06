@@ -2,6 +2,7 @@
   import { PIT_LANE_LIMIT_KMH } from "@/lib/pitStop";
   import { unlockRaceAudio, unlockRaceAudioFromGesture } from "@/lib/raceAudio";
   import { defaultTiming, syncPolledTiming, buildTimingTower } from "@/stores/polledRaceTelemetry";
+  import { speedUnitLabel } from "@/lib/speedUnits";
   import { useRaceStore } from "@/stores/raceStore";
   import TrackMinimap from "@/ui/TrackMinimap.svelte";
 
@@ -64,15 +65,30 @@
       s.setAudioMuted(!s.audioMuted);
     });
   };
+
+  const handleDownloadCsv = () => {
+    const ok = useRaceStore.getState().downloadRaceTelemetryCsv();
+    if (!ok) {
+      console.warn("[telemetry] no CSV rows yet — start a race first");
+    }
+  };
 </script>
 
 <aside
-  class="pointer-events-auto absolute top-3 right-3 z-20 flex w-[min(220px,46%)] flex-col gap-2 rounded-sm border border-white/20 bg-black/70 p-2.5 text-slate-50 shadow-[0_8px_28px_rgba(0,0,0,0.45)] backdrop-blur-md"
+  class="pointer-events-auto absolute top-3 right-3 z-20 flex w-[min(280px,52%)] flex-col gap-2 rounded-sm border border-white/20 bg-black/70 p-2.5 text-slate-50 shadow-[0_8px_28px_rgba(0,0,0,0.45)] backdrop-blur-md"
   aria-label="Timing and tower"
 >
   <div class="flex items-baseline justify-between gap-2">
     <p class="font-mono text-[9px] tracking-[0.22em] text-cyan-200/80 uppercase">Timing</p>
     <div class="flex items-center gap-1.5">
+      <button
+        type="button"
+        class="flex size-11 items-center justify-center rounded-sm border border-white/15 font-mono text-[10px] tracking-wide text-white/60 uppercase hover:text-cyan-200"
+        aria-label="Download race analytics CSV"
+        onclick={handleDownloadCsv}
+      >
+        CSV
+      </button>
       <button
         type="button"
         class="flex size-11 items-center justify-center rounded-sm border border-white/15 font-mono text-[10px] tracking-wide text-white/60 uppercase hover:text-cyan-200"
@@ -101,7 +117,8 @@
   </div>
 
   <p class="font-mono text-[10px] tabular-nums text-white/55">
-    {timing.speedKmh} km/h
+    {timing.speedKmh} {timing.speedUnit ?? speedUnitLabel()}
+    <span class="text-white/35"> · {timing.lapMetres ?? 0}/{timing.trackLengthM ?? 5543} m</span>
     <span class="text-white/35"> · grip {timing.gripPct}%</span>
     {#if timing.damage > 0}
       <span class="text-rose-300"> · dmg {timing.damage}</span>
@@ -184,6 +201,8 @@
         <span class="uppercase {compoundTint[row.compound] ?? 'text-white/40'}">
           {row.compound[0]}
         </span>
+        <span class="w-12 text-right tabular-nums text-white/70" title="Speed">{row.speedDisplay}&nbsp;km/h</span>
+        <span class="w-11 text-right tabular-nums text-cyan-200/80" title="Km achieved">{row.distanceKm.toFixed(1)}&nbsp;km</span>
         <span class="w-10 text-right tabular-nums {row.carStatus === 'retired' ? 'text-amber-300' : 'text-white/45'}">{row.gapLabel}</span>
       </li>
     {/each}

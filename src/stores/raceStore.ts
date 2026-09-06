@@ -7,13 +7,37 @@ import {
   type WeatherOverride,
 } from "@/lib/weather";
 import { FIA, PIT_ENTRY_T, PIT_EXIT_T, TRACK_LENGTH_M } from "@/lib/trackCurve";
-import { gridLaneOffsetM, nearestCarAhead, raceDistance, resolveTraffic, standingsDistance } from "@/lib/raceTraffic";
+import {
+  clampOverviewZoomLevel,
+  OVERVIEW_ZOOM_DEFAULT,
+  type OverviewZoomLevel,
+} from "@/lib/overviewZoom";
+import { gameSpeedToDisplay } from "@/lib/speedUnits";
+import { projectWorldToTrack } from "@/lib/trackProjection";
+import {
+  gridLaneOffsetM,
+  nearestCarAhead,
+  raceDistance,
+  raceDistanceAchievedM,
+  resolveTraffic,
+  standingsDistance,
+} from "@/lib/raceTraffic";
+import {
+  clearRaceTelemetryCsv as clearTelemetryCsvBuffer,
+  downloadRaceTelemetryCsv as downloadTelemetryCsvFile,
+  noteRaceTelemetryDebug,
+  recordRaceTelemetryCsv,
+  startRaceTelemetryCsv,
+  stopRaceTelemetryCsv,
+} from "@/lib/raceTelemetryCsv";
 import {
   availableGrip,
   baseWearRatePerSec,
   integrateSpeedInto,
   SEPANG_AVG_SPEED_MPS,
+  strategyPaceScale,
   targetSpeedMps,
+  TIRE_WEAR_AUTHORITY,
   type CarPhysicsStatus,
   type IncidentKind,
   type IntegrateResult,
@@ -24,10 +48,13 @@ import {
   isPitReleaseBlocked,
   pitExitRaceScale,
   pitProgressRate,
+  pitSpeedMps,
   PIT_ENTRY_HANDOFF_KMH,
   PIT_EXIT_FLARE_KMH,
+  PIT_EXIT_MERGE_LANE_M,
   PIT_EXIT_RACE_BLEND_S,
   PIT_LANE_LIMIT_KMH,
+  PIT_POSE_BLEND,
   PIT_STOP_DURATION_S,
   pitBoxTFor,
   type PitPhase,
@@ -38,7 +65,9 @@ import { getRaceSimShared } from "@/sim/raceSimContext";
 import {
   vehicleBaseIndex,
   VehicleField,
+  vehicleFlagsDecode,
 } from "@/shared/sharedState";
+import { headingFromQuaternion } from "@/lib/vehicleOrientation";
 import {
   controlSpeedMult,
   crossedDetection,
@@ -102,6 +131,11 @@ export type CarState = {
   laneOffsetM: number;
   /** Desired lane for smooth lerp / overtake cuts. */
   laneTargetM: number;
+  /**
+   * Path-rail follow factor (1 = open track). Gap/attack logic writes this;
+   * desk folds it into gripScale so AI-owned targetSpeed still packs up.
+   */
+  trafficPaceScale: number;
   /** Id of car currently blocking us (traffic debug). */
   blockId: string | null;
   /**
@@ -115,6 +149,12 @@ export type CarState = {
   timePenaltyMs: number;
   /** Within 1s at detection — eligible for DRS this lap. */
   drsEligible: boolean;
+  /**
+   * World pose when boxing starts — peel from path-rail into pit CAD
+   * instead of teleporting to centerline at PIT_ENTRY_T.
+   */
+  pitEntryPos: { x: number; y: number; z: number } | null;
+  pitEntryTan: { x: number; z: number } | null;
   /** Along-track speed (gameplay m/s). */
   speedMps: number;
   /** Grip-limited dynamics status. */
@@ -140,6 +180,10 @@ export type StandingsRow = {
   currentLap: number;
   lapProgress: number;
   gapLabel: string;
+  /** Display speed in SPEED_DISPLAY_UNIT. */
+  speedDisplay: number;
+  /** Race distance achieved in kilometres. */
+  distanceKm: number;
   tireWear: number;
   compound: TyreCompound;
   finished: boolean;
@@ -186,6 +230,8 @@ type RaceStore = {
   cameraMode: CameraMode;
   /** Overview tracks YOU until the user orbits; Overview click re-locks. */
   overviewFollow: boolean;
+  /** Bird's-eye follow distance: 1 close … 5 ants. */
+  overviewZoomLevel: OverviewZoomLevel;
   /** Landing picks — applied when building the grid. */
   selectedPlayerColor: string;
   selectedPitBoxIndex: number;
@@ -196,6 +242,9 @@ type RaceStore = {
   /** Race desk Start → FIA lights sequence. */
   beginRace: () => void;
   goRacing: () => void;
+  /** Download in-memory race analytics CSV (1 ms rows, hold-forward). */
+  downloadRaceTelemetryCsv: () => boolean;
+  clearRaceTelemetryCsv: () => void;
   resetToLanding: () => void;
   setPlayerLivery: (color: string) => void;
   setPlayerPitBox: (index: number) => void;
@@ -209,6 +258,7 @@ type RaceStore = {
   setCameraMode: (mode: CameraMode) => void;
   /** User dragged overview — stop tracking YOU until Overview is clicked again. */
   unlockOverviewFollow: () => void;
+  setOverviewZoomLevel: (level: number) => void;
   audioMuted: boolean;
   setAudioMuted: (muted: boolean) => void;
   loadWeather: () => Promise<void>;
@@ -240,7 +290,7 @@ type RaceStore = {
   clearPlayMode: () => void;
 };
 
-const TOTAL_LAPS = 6;
+const TOTAL_LAPS = 3;
 export const PLAYER_ID = "you";
 
 export const FIELD_META = [
@@ -305,11 +355,14 @@ const GRID: Omit<
   | "garageReturn"
   | "laneOffsetM"
   | "laneTargetM"
+  | "trafficPaceScale"
   | "blockId"
   | "pitLapPending"
   | "pitExitBlend"
   | "timePenaltyMs"
   | "drsEligible"
+  | "pitEntryPos"
+  | "pitEntryTan"
   | "speedMps"
   | "status"
   | "damage"
@@ -318,16 +371,18 @@ const GRID: Omit<
   | "brakeIntensity"
   | "sfCrossedOnce"
 >[] = [
+  // AI stints stay near medium/standard so the pack launches together.
+  // Soft+push is a player lever — not a 3-car breakaway template.
   { id: PLAYER_ID, name: "YOU", color: "#f43f5e", isPlayer: true, currentCompound: "medium", engineMode: "standard" },
-  { id: "r1", name: "KD-01", color: "#38bdf8", isPlayer: false, currentCompound: "soft", engineMode: "push" },
+  { id: "r1", name: "KD-01", color: "#38bdf8", isPlayer: false, currentCompound: "medium", engineMode: "standard" },
   { id: "r2", name: "KD-07", color: "#a78bfa", isPlayer: false, currentCompound: "medium", engineMode: "standard" },
-  { id: "r3", name: "MY-22", color: "#34d399", isPlayer: false, currentCompound: "hard", engineMode: "save" },
-  { id: "r4", name: "SG-44", color: "#fbbf24", isPlayer: false, currentCompound: "soft", engineMode: "push" },
-  { id: "r5", name: "TH-11", color: "#fb923c", isPlayer: false, currentCompound: "medium", engineMode: "standard" },
-  { id: "r6", name: "ID-18", color: "#e879f9", isPlayer: false, currentCompound: "hard", engineMode: "standard" },
+  { id: "r3", name: "MY-22", color: "#34d399", isPlayer: false, currentCompound: "soft", engineMode: "standard" },
+  { id: "r4", name: "SG-44", color: "#fbbf24", isPlayer: false, currentCompound: "medium", engineMode: "push" },
+  { id: "r5", name: "TH-11", color: "#fb923c", isPlayer: false, currentCompound: "hard", engineMode: "standard" },
+  { id: "r6", name: "ID-18", color: "#e879f9", isPlayer: false, currentCompound: "medium", engineMode: "standard" },
   { id: "r7", name: "VN-03", color: "#2dd4bf", isPlayer: false, currentCompound: "medium", engineMode: "save" },
-  { id: "r8", name: "PH-55", color: "#94a3b8", isPlayer: false, currentCompound: "soft", engineMode: "push" },
-  { id: "r9", name: "BN-09", color: "#c084fc", isPlayer: false, currentCompound: "medium", engineMode: "standard" },
+  { id: "r8", name: "PH-55", color: "#94a3b8", isPlayer: false, currentCompound: "medium", engineMode: "standard" },
+  { id: "r9", name: "BN-09", color: "#c084fc", isPlayer: false, currentCompound: "hard", engineMode: "standard" },
 ];
 
 const createGrid = (playerColor: string, playerPitBox: number): CarState[] => {
@@ -379,11 +434,14 @@ const createGrid = (playerColor: string, playerPitBox: number): CarState[] => {
       garageReturn: false,
       laneOffsetM: lane,
       laneTargetM: lane,
+      trafficPaceScale: 1,
       blockId: null,
       pitLapPending: false,
       pitExitBlend: 1,
       timePenaltyMs: 0,
       drsEligible: false,
+      pitEntryPos: null,
+      pitEntryTan: null,
       speedMps: 0,
       status: "racing",
       damage: 0,
@@ -469,17 +527,21 @@ const buildStandings = (
   phase: RacePhase,
 ): StandingsRow[] => {
   const gridOrder = isGridStandingsPhase(phase);
-  const isRetired = (car: CarState): boolean => car.status === "retired";
-  const isRaceFinisher = (car: CarState): boolean => raceComplete(car) && !isRetired(car);
+  // DNF only if retired before taking the chequered flag. Post-race in-lap
+  // (garageReturn) can falsely retire from kinematic brake lockups — still a finisher.
+  const isDnf = (car: CarState): boolean =>
+    car.status === "retired" && !car.garageReturn;
+  const isRaceFinisher = (car: CarState): boolean =>
+    car.garageReturn || (car.finished && !isDnf(car));
 
   const sorted = [...cars].sort((a, b) => {
-    const aRet = isRetired(a);
-    const bRet = isRetired(b);
-    if (aRet && bRet) {
+    const aOut = isDnf(a);
+    const bOut = isDnf(b);
+    if (aOut && bOut) {
       return standingsDistance(b, gridOrder) - standingsDistance(a, gridOrder);
     }
-    if (aRet) return 1;
-    if (bRet) return -1;
+    if (aOut) return 1;
+    if (bOut) return -1;
 
     const aDone = isRaceFinisher(a);
     const bDone = isRaceFinisher(b);
@@ -489,12 +551,12 @@ const buildStandings = (
     return standingsDistance(b, gridOrder) - standingsDistance(a, gridOrder);
   });
 
-  const leader = sorted.find((car) => !isRetired(car)) ?? sorted[0];
+  const leader = sorted.find((car) => !isDnf(car)) ?? sorted[0];
   return sorted.map((car, i) => {
     let gapLabel = "LEADER";
-    if (car.status === "retired") {
+    if (isDnf(car)) {
       gapLabel = "OUT";
-    } else if (i > 0 && !isRetired(car)) {
+    } else if (i > 0 && !isDnf(car)) {
       if (isRaceFinisher(car) && isRaceFinisher(leader)) {
         const gap = ((car.finishTimeMs - leader.finishTimeMs) / 1000).toFixed(2);
         gapLabel = `+${gap}s`;
@@ -509,6 +571,7 @@ const buildStandings = (
         }
       }
     }
+    const distM = raceDistanceAchievedM(car);
     return {
       id: car.id,
       name: car.isPlayer ? `YOU · #${car.pitBoxIndex + 1}` : car.name,
@@ -518,6 +581,8 @@ const buildStandings = (
       currentLap: Math.min(car.currentLap, totalLaps),
       lapProgress: car.lapProgress,
       gapLabel,
+      speedDisplay: Math.round(gameSpeedToDisplay(car.speedMps)),
+      distanceKm: Math.round(distM / 10) / 100,
       tireWear: car.tireWear,
       compound: car.currentCompound,
       finished: raceComplete(car),
@@ -564,7 +629,54 @@ const clearPitFlags = (car: CarState): CarState => ({
   pitStopElapsed: 0,
   pitHoldTraffic: false,
   pitServiceDone: false,
+  pitEntryPos: null,
+  pitEntryTan: null,
 });
+
+/** Capture path-rail SAB pose so pit peel starts where the car actually is. */
+const capturePitEntryPose = (
+  carId: string,
+): Pick<CarState, "pitEntryPos" | "pitEntryTan"> => {
+  const shared = getRaceSimShared();
+  const index = CAR_INDEX_BY_ID.get(carId);
+  if (!shared || index === undefined) {
+    return { pitEntryPos: null, pitEntryTan: null };
+  }
+  const base = vehicleBaseIndex(index);
+  const f = shared.floats;
+  const yaw = headingFromQuaternion(
+    f[base + VehicleField.quatX],
+    f[base + VehicleField.quatY],
+    f[base + VehicleField.quatZ],
+    f[base + VehicleField.quatW],
+  );
+  return {
+    pitEntryPos: {
+      x: f[base + VehicleField.posX],
+      y: f[base + VehicleField.posY],
+      z: f[base + VehicleField.posZ],
+    },
+    pitEntryTan: { x: Math.sin(yaw), z: Math.cos(yaw) },
+  };
+};
+
+/** Flip free → boxing without a mid-track teleport/stop. */
+const beginPitEntry = (car: CarState, pitProgressSeed = 0): void => {
+  const from = capturePitEntryPose(car.id);
+  car.isBoxing = true;
+  car.pitPhase = "in";
+  car.pitProgress = pitProgressSeed;
+  car.pitStopElapsed = 0;
+  car.pitHoldTraffic = false;
+  car.pitServiceDone = false;
+  car.lapProgress = PIT_ENTRY_T;
+  car.pitEntryPos = from.pitEntryPos;
+  car.pitEntryTan = from.pitEntryTan;
+  // Keep rolling into the lane — handoff ceiling, never a dead stop.
+  const handoff = PIT_ENTRY_HANDOFF_KMH / 3.6;
+  car.speedMps =
+    car.speedMps > 1 ? Math.min(car.speedMps, handoff) : handoff * 0.9;
+};
 
 /** Record finish time at S/F then drive in-lap to pit garage (F1 post-race). */
 const beginGarageReturn = (
@@ -590,6 +702,21 @@ const beginGarageReturn = (
   };
 };
 
+/**
+ * Chequered at S/F is after PIT_ENTRY_T (~42 m). A pending-box in-lap would
+ * force nearly a full circuit at handoff speed (~110 km/h) before pits — feels
+ * like a softlock. Peel into the lane immediately; podium can arm on garageReturn.
+ */
+const applyGarageReturn = (
+  car: CarState,
+  elapsedMs: number,
+  dt: number,
+  totalLaps: number,
+): void => {
+  Object.assign(car, beginGarageReturn(car, elapsedMs, dt, totalLaps));
+  beginPitEntry(car, 0);
+};
+
 const completeGarageReturn = (car: CarState): CarState => ({
   ...car,
   finished: true,
@@ -600,13 +727,19 @@ const completeGarageReturn = (car: CarState): CarState => ({
   pitHoldTraffic: true,
   pitServiceDone: true,
   speedMps: 0,
+  // Keep classified as finisher even if in-lap falsely marked retired.
+  status: car.status === "retired" ? "racing" : car.status,
 });
 
 const finishPitExit = (car: CarState, elapsedMs: number, totalLaps: number, dt: number): CarState => {
   let next = clearPitFlags(car);
   next.pitExitBlend = 0;
   next.lapProgress = PIT_EXIT_T;
-  next.speedMps = Math.min(next.speedMps, PIT_EXIT_FLARE_KMH / 3.6);
+  // Seed pit-side lane so path-rail boot does not drop mid then peel like lights-out.
+  next.laneOffsetM = PIT_EXIT_MERGE_LANE_M;
+  next.laneTargetM = PIT_EXIT_MERGE_LANE_M;
+  // Merge at flare pace — do not keep stale race speed or drop to 0.
+  next.speedMps = PIT_EXIT_FLARE_KMH / 3.6;
   next.status = next.status === "retired" ? "retired" : "racing";
   next.incidentTimer = 0;
   next.incidentKind = null;
@@ -684,6 +817,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   startLightsOut: false,
   cameraMode: "overview",
   overviewFollow: true,
+  overviewZoomLevel: OVERVIEW_ZOOM_DEFAULT,
   audioMuted: false,
   selectedPlayerColor: DEFAULT_PLAYER_COLOR,
   selectedPitBoxIndex: DEFAULT_PIT_BOX,
@@ -708,6 +842,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   beginRace: () => {
     if (get().phase !== "ready") return;
     clearStartTimers();
+    clearTelemetryCsvBuffer();
     simElapsedMs = 0;
     uiSyncAccum = 0;
     const { selectedPlayerColor, selectedPitBoxIndex, totalLaps, currentCompound, engineMode } =
@@ -791,6 +926,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       startLightsOut: false,
       cameraMode: "overview",
       overviewFollow: true,
+      overviewZoomLevel: OVERVIEW_ZOOM_DEFAULT,
       raceControl: "green",
       missionPaused: false,
       drsActive: false,
@@ -861,6 +997,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   goRacing: () => {
     clearStartTimers();
     if (get().phase !== "starting") return;
+    startRaceTelemetryCsv(CAR_INDEX_BY_ID);
     set({
       phase: "racing",
       startLightCount: 0,
@@ -890,8 +1027,15 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
     );
   },
 
+  downloadRaceTelemetryCsv: () => downloadTelemetryCsvFile(),
+
+  clearRaceTelemetryCsv: () => {
+    clearTelemetryCsvBuffer();
+  },
+
   resetToLanding: () => {
     clearStartTimers();
+    stopRaceTelemetryCsv();
     simElapsedMs = 0;
     get().stop();
     resetMissionSnapshotPrev();
@@ -910,6 +1054,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       startLightsOut: false,
       cameraMode: "overview",
       overviewFollow: true,
+      overviewZoomLevel: OVERVIEW_ZOOM_DEFAULT,
       missionPaused: false,
       raceControl: "green",
       drsEnabled: false,
@@ -964,6 +1109,14 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
   unlockOverviewFollow: () => {
     if (!get().overviewFollow) return;
     set({ overviewFollow: false });
+  },
+  setOverviewZoomLevel: (level) => {
+    const overviewZoomLevel = clampOverviewZoomLevel(level);
+    set({
+      overviewZoomLevel,
+      cameraMode: "overview",
+      overviewFollow: true,
+    });
   },
 
   setAudioMuted: (muted) => {
@@ -1076,6 +1229,7 @@ export const useRaceStore = createStore<RaceStore>((set, get) => ({
       startLightsOut: false,
       cameraMode: "overview",
       overviewFollow: true,
+      overviewZoomLevel: OVERVIEW_ZOOM_DEFAULT,
       missionPaused: false,
       raceControl: "green",
       drsEnabled: false,
@@ -1232,10 +1386,74 @@ export const stepRaceSimulation = (dt: number): void => {
     const index = CAR_INDEX_BY_ID.get(next.id);
     if (index === undefined) return;
     const base = vehicleBaseIndex(index);
-    shared.floats[base + VehicleField.targetSpeedMps] = Math.max(0, targetMps);
+    // Free path-rail: AI owns targetSpeed. Desk early-brake (260 m look) was
+    // stomping AI every frame and locking cars slow on open track.
+    const freeOnTrack =
+      !next.isBoxing &&
+      !next.finished &&
+      next.status !== "retired" &&
+      !next.garageReturn;
+    if (!freeOnTrack) {
+      shared.floats[base + VehicleField.targetSpeedMps] = Math.max(0, targetMps);
+    }
+    shared.floats[base + VehicleField.laneOffsetM] = next.laneTargetM;
+    // AI envelope inputs (always fresh from desk).
+    const lapT = ((next.lapProgress % 1) + 1) % 1;
+    shared.floats[base + VehicleField.lapProgress] = lapT;
+    // Push/soft must reach path-rail (AI owns targetSpeed, not desk mps).
+    // Tight field spread — pack launches as one; strategy still separates later.
+    const fieldPace = next.isPlayer ? 1.01 : 0.97 + (index % 5) * 0.008;
+    let grip =
+      strategyPaceScale(
+        next.currentCompound,
+        next.engineMode,
+        rain,
+        next.tireWear,
+        next.damage,
+        controlSpeedMult(control),
+      ) *
+      fieldPace *
+      Math.max(0.28, Math.min(1, next.trafficPaceScale ?? 1));
+    // Free cars: AI owns targetSpeed — fold pit-exit pace here so merge
+    // does not floor it like a lights-out launch.
+    if (next.pitExitBlend < 1) {
+      grip *= pitExitRaceScale(next.pitExitBlend);
+    }
+    shared.floats[base + VehicleField.gripScale] = Math.max(
+      0.45,
+      Math.min(1.4, grip),
+    );
+    shared.floats[base + VehicleField.drsMult] =
+      drsOn && next.drsEligible && isInDrsZone(lapT) ? DRS_SPEED_MULT : 1;
+  };
+
+  const syncCarFromPhysicsSAB = (
+    next: CarState,
+    views: NonNullable<typeof shared>,
+  ): boolean => {
+    const index = CAR_INDEX_BY_ID.get(next.id);
+    if (index === undefined) return false;
+    const base = vehicleBaseIndex(index);
+    const floats = views.floats;
+    const flags = vehicleFlagsDecode(floats[base + VehicleField.flags]);
+    if (flags.kinematic) return false;
+    const px = floats[base + VehicleField.posX];
+    const pz = floats[base + VehicleField.posZ];
+    const proj = projectWorldToTrack(px, pz);
+    next.lapProgress = proj.lapProgress;
+    // Keep traffic/grid lane intent — do not stomp with projected center snap.
+    next.laneOffsetM = next.laneTargetM;
+    next.speedMps = Math.max(0, floats[base + VehicleField.speed]);
+    // Follow SAB brake exactly — old max-only ratchet left lamps stuck on.
+    next.brakeIntensity = Math.max(0, floats[base + VehicleField.brake]);
+    return true;
   };
 
   // Mutate the live array in place — no {...car} copies per frame.
+  // Tire wear: desk-only writers in this loop (see TIRE_WEAR_AUTHORITY).
+  if (TIRE_WEAR_AUTHORITY !== "desk") {
+    throw new Error("tire wear authority must remain desk");
+  }
   const cars = getLiveRaceCars();
   for (let ci = 0; ci < cars.length; ci += 1) {
     const car = cars[ci];
@@ -1245,7 +1463,8 @@ export const stepRaceSimulation = (dt: number): void => {
       if (car.tireWear < 28 || needsWetStrategyBox(car, rain)) {
         car.pendingBox = true;
         car.pendingCompound = pickAiCompound(rain, car.tireWear);
-      } else if (Math.random() < 0.0008) {
+      } else if (Math.random() < 0.00025 && car.sfCrossedOnce) {
+        // Rare mode flips only after S/F — random push at lights-out split the pack.
         const modes: EngineMode[] = ["push", "standard", "save"];
         car.engineMode = modes[Math.floor(Math.random() * modes.length)];
       }
@@ -1256,11 +1475,30 @@ export const stepRaceSimulation = (dt: number): void => {
       car.brakeIntensity = car.pitPhase === "in" ? 0.75 : 0;
       const boxT = pitBoxTFor(car);
       const phase = car.pitPhase ?? "in";
+      // Desk-authoritative wear continues in pit (lighter on the jacks).
+      const wearRate = baseWearRatePerSec(car.currentCompound, rain, car.engineMode);
+      const pitWearScale = phase === "stopped" ? 0.25 : 0.55;
+      const pitWearPerSec = wearRate * pitWearScale;
+      car.tireWear = Math.max(0, car.tireWear - pitWearPerSec * dt);
+      const carIndex = CAR_INDEX_BY_ID.get(car.id) ?? 0;
+      noteRaceTelemetryDebug(car.id, {
+        deskTargetMps: car.speedMps,
+        syncedFromPhysics: false,
+        extraWearDelta: 0,
+        fieldPace: car.isPlayer ? 1.01 : 0.97 + (carIndex % 5) * 0.008,
+        pendingBoxScrub: 1,
+        wearRatePerSec: pitWearPerSec,
+      });
 
       if (phase === "in") {
         car.pitPhase = "in";
         const rate = pitProgressRate("in", car.pitProgress, boxT);
         car.pitProgress = Math.min(boxT, car.pitProgress + rate * dt);
+        car.speedMps = pitSpeedMps("in", car.pitProgress, boxT);
+        if (car.pitProgress >= PIT_POSE_BLEND && (car.pitEntryPos || car.pitEntryTan)) {
+          car.pitEntryPos = null;
+          car.pitEntryTan = null;
+        }
         if (car.pitProgress >= boxT - 1e-4) {
           car.pitProgress = boxT;
           if (car.garageReturn) {
@@ -1270,10 +1508,12 @@ export const stepRaceSimulation = (dt: number): void => {
             car.pitStopElapsed = 0;
             car.pitHoldTraffic = false;
             car.pitServiceDone = false;
+            car.speedMps = 0;
           }
         }
       } else if (phase === "stopped") {
         car.pitProgress = boxT;
+        car.speedMps = 0;
         car.pitStopElapsed += dt;
         if (!car.pitServiceDone && car.pitStopElapsed >= PIT_STOP_DURATION_S) {
           Object.assign(car, applyServiceComplete(car));
@@ -1286,18 +1526,34 @@ export const stepRaceSimulation = (dt: number): void => {
         car.pitHoldTraffic = false;
         const rate = pitProgressRate("out", car.pitProgress, boxT);
         car.pitProgress = Math.min(1, car.pitProgress + rate * dt);
+        car.speedMps = pitSpeedMps("out", car.pitProgress, boxT);
         if (car.pitProgress >= 1) {
           Object.assign(car, finishPitExit(car, elapsedMs, state.totalLaps, dt));
+          if (car.garageReturn && !car.isBoxing) {
+            beginPitEntry(car, 0);
+          }
         }
       }
-    } else if (car.status === "retired") {
+    } else if (car.status === "retired" && !car.garageReturn) {
       car.speedMps = 0;
       car.brakeIntensity = 0;
       car.finished = true;
       if (!car.finishTimeMs) {
         car.finishTimeMs = elapsedMs + car.unsafeReleasePenaltyMs + car.timePenaltyMs;
       }
+      noteRaceTelemetryDebug(car.id, {
+        deskTargetMps: 0,
+        syncedFromPhysics: false,
+        extraWearDelta: 0,
+        fieldPace: 1,
+        pendingBoxScrub: 1,
+        wearRatePerSec: 0,
+      });
     } else {
+      if (car.garageReturn && car.status === "retired") {
+        car.status = "racing";
+        car.finished = false;
+      }
       let targetMps = resolveTargetMps(car, rain, control, drsOn);
       if (car.pitExitBlend < 1) {
         car.pitExitBlend = Math.min(1, car.pitExitBlend + dt / PIT_EXIT_RACE_BLEND_S);
@@ -1305,41 +1561,83 @@ export const stepRaceSimulation = (dt: number): void => {
       if (car.garageReturn && !car.isBoxing) {
         targetMps = Math.min(targetMps, PIT_ENTRY_HANDOFF_KMH / 3.6);
       }
+      let pendingBoxScrub = 1;
       if (car.pendingBox && !car.isBoxing) {
         const toEntry = ((PIT_ENTRY_T - car.lapProgress) + 1) % 1;
         if (toEntry > 0 && toEntry < 0.07) {
-          targetMps *= 0.32 + 0.68 * (toEntry / 0.07);
+          pendingBoxScrub = 0.32 + 0.68 * (toEntry / 0.07);
+          targetMps *= pendingBoxScrub;
         }
       }
 
-      integrateSpeedInto(PHYS_SCRATCH, {
-        speedMps: car.speedMps,
-        status: car.status,
-        damage: car.damage,
-        incidentTimer: car.incidentTimer,
-        incidentKind: car.incidentKind,
-        tireWear: car.tireWear,
-        compound: car.currentCompound,
-        engineMode: car.engineMode,
-        rain,
-        targetMps,
-        dt,
-      });
-      car.status = PHYS_SCRATCH.status;
-      car.damage = PHYS_SCRATCH.damage;
-      car.incidentTimer = PHYS_SCRATCH.incidentTimer;
-      car.incidentKind = PHYS_SCRATCH.incidentKind;
-      car.brakeIntensity = PHYS_SCRATCH.brakeIntensity;
-      car.speedMps = PHYS_SCRATCH.speedMps;
-      car.lapProgress += (PHYS_SCRATCH.speedMps * dt) / TRACK_LENGTH_M;
-      writePhysicsTarget(car, PHYS_SCRATCH.speedMps);
+      // Wear / incident telemetry only — world pose comes from Rapier SAB.
+      writePhysicsTarget(car, targetMps);
 
-      const prevProgress = car.lapProgress - (PHYS_SCRATCH.speedMps * dt) / TRACK_LENGTH_M;
+      const prevProgress = car.lapProgress;
+      const syncedFromPhysics = shared ? syncCarFromPhysicsSAB(car, shared) : false;
+      const carIndex = CAR_INDEX_BY_ID.get(car.id) ?? 0;
+      const fieldPace = car.isPlayer ? 1.01 : 0.97 + (carIndex % 5) * 0.008;
+      const wearBefore = car.tireWear;
+
+      // Parametric integrate drives wear / incidents for kinematic cars only.
+      // Free path-rail: SAB owns speed/brake. Desk targetMps (kappa / pit-entry
+      // scrub) diverges from SAB → integrateSpeedInto invents lockup/spin
+      // extraWear (~10%/s cliffs). Skip that path; base stint wear only.
+      const wearRate = baseWearRatePerSec(car.currentCompound, rain, car.engineMode);
+      if (syncedFromPhysics) {
+        car.tireWear = Math.max(0, car.tireWear - wearRate * dt);
+      } else {
+        integrateSpeedInto(PHYS_SCRATCH, {
+          speedMps: car.speedMps,
+          status: car.status,
+          damage: car.damage,
+          incidentTimer: car.incidentTimer,
+          incidentKind: car.incidentKind,
+          tireWear: car.tireWear,
+          compound: car.currentCompound,
+          engineMode: car.engineMode,
+          rain,
+          targetMps,
+          dt,
+        });
+
+        if (car.garageReturn) {
+          // Chequered already taken — kinematic in-lap brake dump must not DNF the result.
+          car.brakeIntensity = PHYS_SCRATCH.brakeIntensity;
+          car.speedMps = PHYS_SCRATCH.speedMps;
+          car.lapProgress += (PHYS_SCRATCH.speedMps * dt) / TRACK_LENGTH_M;
+          if (car.status === "retired") car.status = "racing";
+        } else {
+          car.status = PHYS_SCRATCH.status;
+          car.damage = PHYS_SCRATCH.damage;
+          car.incidentTimer = PHYS_SCRATCH.incidentTimer;
+          car.incidentKind = PHYS_SCRATCH.incidentKind;
+          car.brakeIntensity = PHYS_SCRATCH.brakeIntensity;
+          car.speedMps = PHYS_SCRATCH.speedMps;
+          car.lapProgress += (PHYS_SCRATCH.speedMps * dt) / TRACK_LENGTH_M;
+        }
+        car.tireWear = Math.max(0, PHYS_SCRATCH.tireWear - wearRate * dt);
+      }
+
+      const extraWearDelta = Math.max(
+        0,
+        wearBefore - car.tireWear - wearRate * dt,
+      );
+      noteRaceTelemetryDebug(car.id, {
+        deskTargetMps: targetMps,
+        syncedFromPhysics,
+        extraWearDelta,
+        fieldPace,
+        pendingBoxScrub,
+        wearRatePerSec: wearRate,
+      });
+
       car.currentLapTimeMs += dt * 1000;
       if (drsOn && crossedDetection(prevProgress, car.lapProgress)) {
         const ahead = nearestCarAhead(cars, car, prevProgress);
         if (!ahead) {
-          car.drsEligible = false;
+          // Open track / P1 — still arm DRS so main & back straights can trap 300+.
+          car.drsEligible = true;
         } else {
           const gapM =
             (raceDistance(ahead) - (car.currentLap + prevProgress)) * TRACK_LENGTH_M;
@@ -1350,10 +1648,8 @@ export const stepRaceSimulation = (dt: number): void => {
       if (prevProgress <= DRS_ZONE_END && car.lapProgress > DRS_ZONE_END) {
         car.drsEligible = false;
       }
-      const wearRate = baseWearRatePerSec(car.currentCompound, rain, car.engineMode);
-      car.tireWear = Math.max(0, PHYS_SCRATCH.tireWear - wearRate * dt);
 
-      if (car.status === "retired") {
+      if (car.status === "retired" && !car.garageReturn) {
         car.finished = true;
         car.finishTimeMs = elapsedMs + car.unsafeReleasePenaltyMs + car.timePenaltyMs;
         car.speedMps = 0;
@@ -1365,24 +1661,21 @@ export const stepRaceSimulation = (dt: number): void => {
           (prev < PIT_ENTRY_T && car.lapProgress >= PIT_ENTRY_T) ||
           (prev > car.lapProgress && (prev < PIT_ENTRY_T || car.lapProgress >= PIT_ENTRY_T));
         if (crossedEntry) {
-          car.isBoxing = true;
-          car.pitPhase = "in";
-          car.pitProgress = 0;
-          car.pitStopElapsed = 0;
-          car.pitHoldTraffic = false;
-          car.pitServiceDone = false;
-          car.lapProgress = PIT_ENTRY_T;
+          beginPitEntry(car, 0);
           car.pitLapPending = !car.garageReturn;
         }
       }
 
-      if (car.lapProgress >= 1) {
-        car.lapProgress -= 1;
+      const crossedSf =
+        syncedFromPhysics
+          ? prevProgress > 0.7 && car.lapProgress < 0.3
+          : car.lapProgress >= 1;
+      if (crossedSf) {
+        if (!syncedFromPhysics) car.lapProgress -= 1;
         if (car.garageReturn) {
           car.currentLap = state.totalLaps;
         } else if (!car.sfCrossedOnce) {
-          // Grid sits at t≈0.998 — first wrap is not a lap for anyone (timer-based
-          // counting let back markers steal a lap while the front row did not).
+          // Grid sits at t≈0.998 — first wrap is not a lap for anyone.
           car.sfCrossedOnce = true;
         } else {
           const genuineLap = car.currentLapTimeMs >= MIN_LAP_MS;
@@ -1392,18 +1685,13 @@ export const stepRaceSimulation = (dt: number): void => {
             car.currentLap += 1;
 
             if (car.pendingBox && !car.isBoxing) {
-              car.isBoxing = true;
-              car.pitPhase = "in";
-              car.pitProgress = 0.02;
-              car.pitStopElapsed = 0;
-              car.pitHoldTraffic = false;
-              car.pitServiceDone = false;
+              beginPitEntry(car, 0.02);
               car.lapProgress = PIT_EXIT_T;
               car.pitLapPending = false;
             }
 
             if (car.currentLap > state.totalLaps) {
-              Object.assign(car, beginGarageReturn(car, elapsedMs, dt, state.totalLaps));
+              applyGarageReturn(car, elapsedMs, dt, state.totalLaps);
             }
           }
         }
@@ -1431,11 +1719,35 @@ export const stepRaceSimulation = (dt: number): void => {
     car.pitHoldTraffic = true;
   }
 
-  resolveTraffic(cars, dt, elapsedMs < 4500, elapsedMs);
+  // Path-rail has no car-car bodies — gap/lane traffic only (no fake collision spins).
+  resolveTraffic(cars, dt, true, elapsedMs);
+  // Traffic mutates lanes + trafficPaceScale after the per-car write — push to SAB now.
+  for (let ci = 0; ci < cars.length; ci += 1) {
+    const car = cars[ci];
+    if (car.finished || car.status === "retired") continue;
+    writePhysicsTarget(car, car.speedMps);
+  }
+
+  recordRaceTelemetryCsv(elapsedMs, cars, {
+    phase: "racing",
+    raceControl: control,
+    rainIntensity: rain,
+    totalLaps: state.totalLaps,
+    drsEnabled: state.drsEnabled,
+  });
 
   simElapsedMs = elapsedMs;
-  const allDone = cars.every((c) => c.finished);
+  // garageReturn counts — otherwise podium waits on a cooldown lap / pit crawl.
+  const allDone = cars.every(
+    (c) =>
+      c.finished ||
+      c.garageReturn ||
+      (c.status === "retired" && !c.garageReturn),
+  );
   const nextPhase = allDone ? "finished" : "racing";
+  if (allDone) {
+    stopRaceTelemetryCsv();
+  }
 
   uiSyncAccum += dt;
   const syncUi = allDone || uiSyncAccum >= UI_SYNC_INTERVAL_S;
@@ -1444,7 +1756,9 @@ export const stepRaceSimulation = (dt: number): void => {
   if (syncUi) {
     const uiCars = cars.map((c) => ({ ...c }));
     const standings = buildStandings(uiCars, state.totalLaps, nextPhase);
-    const winnerId = allDone ? standings[0]?.id ?? null : state.winnerId;
+    // Arm winner as soon as anyone takes the flag — podium can show while others finish.
+    const winnerId =
+      state.winnerId ?? standings.find((row) => row.finished)?.id ?? null;
     const playerCar = uiCars.find((c) => c.isPlayer);
     const drsActive =
       drsOn && !!playerCar && playerCar.drsEligible && isInDrsZone(playerCar.lapProgress);

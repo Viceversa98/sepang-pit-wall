@@ -136,15 +136,22 @@ const mapPoint = (p) => {
 
 let pts = sampled.map(mapPoint);
 
-let area = 0;
-for (let i = 0; i < pts.length; i++) {
-  const a = pts[i];
-  const b = pts[(i + 1) % pts.length];
-  area += a.x * b.z - b.x * a.z;
-}
-if (area > 0) {
+// Real Sepang is clockwise with T1 a RIGHT-hander. Signed-area CW alone
+// is not enough (can still yield a left T1). Mirror X until first corner is right.
+const yawAt = (arr, i) => {
+  const a = arr[i];
+  const b = arr[(i + 1) % arr.length];
+  return Math.atan2(b.x - a.x, b.z - a.z);
+};
+const t1Delta = (arr) => {
+  const i = Math.min(24, arr.length - 4);
+  let d = yawAt(arr, i + 3) - yawAt(arr, i);
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d; // <0 = right with atan2(dx, dz)
+};
+if (t1Delta(pts) > 0) {
   pts = pts.map((p) => ({ x: -p.x, z: p.z }));
-  pts = [pts[0], ...pts.slice(1).reverse()];
 }
 
 const bilinearSample = (grid, width, height, u, v) => {

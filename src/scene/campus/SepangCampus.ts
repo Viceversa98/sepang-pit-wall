@@ -6,6 +6,7 @@ import {
 import { CAMPUS_ENV_GLB_URL, loadCampusGltf } from "@/lib/sepangCampusAssets";
 import { resolveCampusPlacements } from "@/lib/sepangCampusLayout";
 import { prepareStaticMesh } from "@/lib/staticMesh";
+import { footprintClearsTrack, TRACK_CLEARANCE_M } from "@/lib/trackClearance";
 import { buildCampusKit } from "@/scene/campus/buildKit";
 import { buildOsmBackdrop, disposeOsmBackdrop } from "@/scene/campus/buildOsmBackdrop";
 
@@ -31,6 +32,32 @@ const disposeGroup = (group: THREE.Object3D): void => {
   });
 };
 
+/** Drop baked meshes whose AABB still clips the racing ribbon (stale GLB / fat kits). */
+const cullCampusMeshesOnTrack = (root: THREE.Object3D): void => {
+  const doomed: THREE.Mesh[] = [];
+  const box = new THREE.Box3();
+  root.updateMatrixWorld(true);
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    box.setFromObject(obj);
+    if (box.isEmpty()) return;
+    const ring = [
+      { x: box.min.x, z: box.min.z },
+      { x: box.min.x, z: box.max.z },
+      { x: box.max.x, z: box.min.z },
+      { x: box.max.x, z: box.max.z },
+    ];
+    if (!footprintClearsTrack(ring, TRACK_CLEARANCE_M)) doomed.push(obj);
+  });
+  for (const mesh of doomed) {
+    mesh.parent?.remove(mesh);
+    mesh.geometry?.dispose();
+    const mat = mesh.material;
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+    else mat?.dispose();
+  }
+};
+
 const tryLoadMergedCampusEnv = async (
   group: THREE.Group,
   entries: CampusEntry[],
@@ -44,7 +71,10 @@ const tryLoadMergedCampusEnv = async (
     if (!campusGlbHasMeshes(model)) return false;
 
     prepareCampusGlbForScene(model);
+    // campus-env.glb is baked from resolveCampusPlacements (already X-mirrored).
     prepareStaticMesh(model);
+    cullCampusMeshesOnTrack(model);
+    if (!campusGlbHasMeshes(model)) return false;
     model.name = "campus-env-merged";
 
     for (const entry of entries) {

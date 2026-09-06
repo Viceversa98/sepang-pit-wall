@@ -1,9 +1,19 @@
 import type { RaceControlFlag } from "@/lib/academy/types";
 
-/** Approximate Sepang DRS: detect late lap, activate on main straight. */
-export const DRS_DETECT_T = 0.82;
-export const DRS_ZONE_START = 0.88;
-export const DRS_ZONE_END = 0.98;
+/**
+ * Sepang DRS zones (lap fraction):
+ * - Kuala Lumpur / main straight (wraps S/F toward T1)
+ * - Penang / back straight into T15
+ */
+export const DRS_ZONES = [
+  { start: 0.93, end: 0.08 },
+  { start: 0.84, end: 0.9 },
+] as const;
+
+/** @deprecated Prefer DRS_ZONES — kept for older single-zone callers. */
+export const DRS_DETECT_T = 0.92;
+export const DRS_ZONE_START = 0.93;
+export const DRS_ZONE_END = 0.08;
 export const DRS_SPEED_MULT = 1.08;
 
 export const controlSpeedMult = (flag: RaceControlFlag): number => {
@@ -25,8 +35,13 @@ export const controlSpeedMult = (flag: RaceControlFlag): number => {
   }
 };
 
-export const isInDrsZone = (lapProgress: number): boolean =>
-  lapProgress >= DRS_ZONE_START && lapProgress <= DRS_ZONE_END;
+const inZone = (t: number, start: number, end: number): boolean =>
+  start <= end ? t >= start && t <= end : t >= start || t <= end;
+
+export const isInDrsZone = (lapProgress: number): boolean => {
+  const t = ((lapProgress % 1) + 1) % 1;
+  return DRS_ZONES.some((z) => inZone(t, z.start, z.end));
+};
 
 export const crossedDetection = (prev: number, next: number): boolean =>
   (prev < DRS_DETECT_T && next >= DRS_DETECT_T) ||

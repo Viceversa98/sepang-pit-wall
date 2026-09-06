@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { DRS_ZONE_END, DRS_ZONE_START } from "@/lib/academy/raceControl";
-import { curvatureAt } from "@/lib/racePhysics";
+import { DRS_ZONES } from "@/lib/academy/raceControl";
 import {
+  getPitCurve,
   getTrackCurve,
   PIT_ENTRY_T,
   PIT_EXIT_T,
@@ -10,7 +10,23 @@ import {
 
 export type MapPoint = { x: number; y: number; t: number };
 
-export type TurnLabel = { label: string; x: number; y: number; t: number };
+export type TurnLabel = {
+  n: number;
+  label: string;
+  name: string | null;
+  x: number;
+  y: number;
+  lx: number;
+  ly: number;
+  t: number;
+};
+
+export type StraightLabel = {
+  name: string;
+  x: number;
+  y: number;
+  t: number;
+};
 
 type NormTransform = {
   cx: number;
@@ -20,17 +36,42 @@ type NormTransform = {
 
 export type TrackMapLayout = {
   path: MapPoint[];
-  drsPath: MapPoint[];
+  pitPath: MapPoint[];
+  drsPaths: MapPoint[][];
   pitEntry: MapPoint;
   pitExit: MapPoint;
   startFinish: MapPoint;
   turns: TurnLabel[];
+  straights: StraightLabel[];
   viewBox: { minX: number; minY: number; width: number; height: number };
-  /** Shared world XZ → map 0–1 transform (all overlays use this). */
   transform: NormTransform;
 };
 
-const SAMPLE = 320;
+/** Official Sepang corner names + apex lap fraction (curvature-aligned). */
+const SEPANG_TURNS: {
+  n: number;
+  t: number;
+  name: string | null;
+  outward: number;
+}[] = [
+  { n: 1, t: 0.1, name: null, outward: 1.15 },
+  { n: 2, t: 0.117, name: "Pangkor Laut Chicane", outward: 1.25 },
+  { n: 3, t: 0.19, name: null, outward: 1.15 },
+  { n: 4, t: 0.264, name: "Langkawi Corner", outward: 1.2 },
+  { n: 5, t: 0.324, name: null, outward: 1.15 },
+  { n: 6, t: 0.367, name: "Genting Curve", outward: 1.2 },
+  { n: 7, t: 0.439, name: null, outward: 1.15 },
+  { n: 8, t: 0.461, name: "KLIA Curve", outward: 1.2 },
+  { n: 9, t: 0.549, name: null, outward: 1.2 },
+  { n: 10, t: 0.57, name: "Berjaya Tioman Corner", outward: 1.25 },
+  { n: 11, t: 0.613, name: "Kenyir Lake Corner", outward: 1.25 },
+  { n: 12, t: 0.674, name: null, outward: 1.15 },
+  { n: 13, t: 0.738, name: null, outward: 1.15 },
+  { n: 14, t: 0.81, name: "Sunway Lagoon Corner", outward: 1.25 },
+  { n: 15, t: 0.91, name: null, outward: 1.2 },
+];
+
+const SAMPLE = 360;
 
 const computeNormTransform = (pts: { x: number; z: number }[]): NormTransform => {
   let minX = Infinity;
@@ -43,7 +84,7 @@ const computeNormTransform = (pts: { x: number; z: number }[]): NormTransform =>
     minZ = Math.min(minZ, p.z);
     maxZ = Math.max(maxZ, p.z);
   }
-  const pad = Math.max(maxX - minX, maxZ - minZ) * 0.06;
+  const pad = Math.max(maxX - minX, maxZ - minZ) * 0.08;
   const span = Math.max(maxX - minX, maxZ - minZ) + pad * 2;
   return {
     cx: (minX + maxX) / 2,
@@ -52,13 +93,18 @@ const computeNormTransform = (pts: { x: number; z: number }[]): NormTransform =>
   };
 };
 
+/**
+ * World XZ → map 0–1 (SVG: +x right, +y down).
+ * Rotates so official Sepang north is up: Langkawi (+X) top, KLIA (+Z) right,
+ * Kenyir (−X) bottom, Pangkor (−Z) left. KL straight travels right→left.
+ */
 const applyNorm = (
   p: { x: number; z: number; t: number },
   tr: NormTransform,
 ): MapPoint => ({
   t: p.t,
-  x: 0.5 + (p.x - tr.cx) / tr.span,
-  y: 0.5 - (p.z - tr.cz) / tr.span,
+  x: 0.5 + (p.z - tr.cz) / tr.span,
+  y: 0.5 - (p.x - tr.cx) / tr.span,
 });
 
 const normalizePath = (
@@ -66,8 +112,10 @@ const normalizePath = (
   tr: NormTransform,
 ): MapPoint[] => pts.map((p) => applyNorm(p, tr));
 
-const sampleCurve = (steps: number): { x: number; z: number; t: number }[] => {
-  const curve = getTrackCurve();
+const sampleCurve = (
+  curve: THREE.CatmullRomCurve3,
+  steps: number,
+): { x: number; z: number; t: number }[] => {
   const out: { x: number; z: number; t: number }[] = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
@@ -77,35 +125,28 @@ const sampleCurve = (steps: number): { x: number; z: number; t: number }[] => {
   return out;
 };
 
-const detectTurns = (path: MapPoint[]): TurnLabel[] => {
-  const peaks: { t: number; k: number }[] = [];
-  const steps = 400;
-  for (let i = 1; i < steps - 1; i++) {
-    const t = i / steps;
-    const k = curvatureAt(t);
-    const kPrev = curvatureAt((i - 1) / steps);
-    const kNext = curvatureAt((i + 1) / steps);
-    if (k > 0.42 && k >= kPrev && k >= kNext) {
-      if (peaks.length === 0 || t - peaks[peaks.length - 1].t > 0.035) {
-        peaks.push({ t, k });
-      } else if (k > peaks[peaks.length - 1].k) {
-        peaks[peaks.length - 1] = { t, k };
-      }
+const sampleZone = (
+  curve: THREE.CatmullRomCurve3,
+  t0: number,
+  t1: number,
+  steps: number,
+): { x: number; z: number; t: number }[] => {
+  const out: { x: number; z: number; t: number }[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps;
+    let t: number;
+    if (t0 <= t1) {
+      t = t0 + (t1 - t0) * u;
+    } else {
+      // Wrap (e.g. 0.93 → 1.0 → 0.0 → 0.08)
+      const span = 1 - t0 + t1;
+      const s = span * u;
+      t = s < 1 - t0 ? t0 + s : s - (1 - t0);
     }
+    const p = curve.getPointAt(t);
+    out.push({ x: p.x, z: p.z, t });
   }
-
-  peaks.sort((a, b) => a.t - b.t);
-  return peaks.slice(0, 15).map((peak, i) => {
-    const nearest = path.reduce((best, p) =>
-      Math.abs(p.t - peak.t) < Math.abs(best.t - peak.t) ? p : best,
-    );
-    return {
-      label: `T${i + 1}`,
-      x: nearest.x,
-      y: nearest.y,
-      t: peak.t,
-    };
-  });
+  return out;
 };
 
 /** Interpolate map position at lap progress t ∈ [0, 1). */
@@ -128,28 +169,76 @@ const pointAtT = (path: MapPoint[], t: number): MapPoint => {
   };
 };
 
+const outwardFromPath = (
+  path: MapPoint[],
+  t: number,
+  scale: number,
+): { x: number; y: number } => {
+  const a = pointAtT(path, t - 0.004);
+  const b = pointAtT(path, t + 0.004);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // Perp (right of forward in map space) — nudge labels outside.
+  const px = dy / len;
+  const py = -dx / len;
+  const on = pointAtT(path, t);
+  return {
+    x: on.x + px * 0.028 * scale,
+    y: on.y + py * 0.028 * scale,
+  };
+};
+
 let cachedLayout: TrackMapLayout | null = null;
 
 export const buildTrackMapLayout = (): TrackMapLayout => {
   if (cachedLayout) return cachedLayout;
 
-  const raw = sampleCurve(SAMPLE);
+  const track = getTrackCurve();
+  const raw = sampleCurve(track, SAMPLE);
   const transform = computeNormTransform(raw);
   const path = normalizePath(raw, transform);
 
-  const curve = getTrackCurve();
-  const drsRaw: { x: number; z: number; t: number }[] = [];
-  const drsSteps = 24;
-  for (let i = 0; i <= drsSteps; i++) {
-    const u = i / drsSteps;
-    const t = DRS_ZONE_START + (DRS_ZONE_END - DRS_ZONE_START) * u;
-    const p = curve.getPointAt(t);
-    drsRaw.push({ x: p.x, z: p.z, t });
-  }
+  const pitRaw = sampleCurve(getPitCurve(), 96);
+  const pitPath = normalizePath(pitRaw, transform);
 
-  // Same transform as the full circuit — keeps DRS overlay on the grey track line.
-  const drsPath = normalizePath(drsRaw, transform);
-  const turns = detectTurns(path);
+  const drsPaths = DRS_ZONES.map((z) =>
+    normalizePath(sampleZone(track, z.start, z.end, 20), transform),
+  );
+
+  const turns: TurnLabel[] = SEPANG_TURNS.map((def) => {
+    const on = pointAtT(path, def.t);
+    const out = outwardFromPath(path, def.t, def.outward);
+    return {
+      n: def.n,
+      label: String(def.n),
+      name: def.name,
+      x: on.x,
+      y: on.y,
+      lx: out.x,
+      ly: out.y,
+      t: def.t,
+    };
+  });
+
+  const straights: StraightLabel[] = [
+    {
+      name: "Kuala Lumpur Straight",
+      t: 0.03,
+      ...(() => {
+        const p = outwardFromPath(path, 0.03, -1.6);
+        return { x: p.x, y: p.y };
+      })(),
+    },
+    {
+      name: "Penang Straight",
+      t: 0.86,
+      ...(() => {
+        const p = outwardFromPath(path, 0.86, 1.8);
+        return { x: p.x, y: p.y };
+      })(),
+    },
+  ];
 
   let minX = 1;
   let minY = 1;
@@ -164,17 +253,19 @@ export const buildTrackMapLayout = (): TrackMapLayout => {
 
   cachedLayout = {
     path,
-    drsPath,
+    pitPath,
+    drsPaths,
     pitEntry: pointAtT(path, PIT_ENTRY_T),
     pitExit: pointAtT(path, PIT_EXIT_T),
     startFinish: pointAtT(path, 0),
     turns,
+    straights,
     transform,
     viewBox: {
-      minX: minX - 0.04,
-      minY: minY - 0.04,
-      width: maxX - minX + 0.08,
-      height: maxY - minY + 0.08,
+      minX: minX - 0.06,
+      minY: minY - 0.06,
+      width: maxX - minX + 0.12,
+      height: maxY - minY + 0.12,
     },
   };
 
@@ -189,7 +280,10 @@ export const progressToMap = (lapProgress: number): { x: number; y: number } => 
 };
 
 /** Project sim world XZ onto the minimap (matches 3D car pose). */
-export const worldXZToMap = (worldX: number, worldZ: number): { x: number; y: number } => {
+export const worldXZToMap = (
+  worldX: number,
+  worldZ: number,
+): { x: number; y: number } => {
   const { transform } = buildTrackMapLayout();
   return applyNorm({ x: worldX, z: worldZ, t: 0 }, transform);
 };

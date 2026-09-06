@@ -5,7 +5,11 @@ import {
   cornerWorld,
   resolveCampusPlacements,
 } from "@/lib/sepangCampusLayout";
-import { footprintClearsTrack } from "@/lib/trackClearance";
+import {
+  footprintClearsTrack,
+  pointClearsTrack,
+  TRACK_CLEARANCE_M,
+} from "@/lib/trackClearance";
 import { METRES_PER_UNIT } from "@/lib/trackCurve";
 import { sampleTerrainHeight } from "@/lib/terrainHeight";
 import { createConcrete } from "@/scene/campus/materials";
@@ -56,10 +60,12 @@ const extrudeFootprint = (
   heightU: number,
 ): THREE.BufferGeometry | null => {
   if (ring.length < 3) return null;
+  // Shape lives in XY; rotateX(-π/2) maps shapeY → -worldZ. Feed -z so meshes
+  // land on the same XZ ring clearance / OSM export already use.
   const shape = new THREE.Shape();
-  shape.moveTo(ring[0].x, ring[0].z);
+  shape.moveTo(ring[0].x, -ring[0].z);
   for (let i = 1; i < ring.length; i++) {
-    shape.lineTo(ring[i].x, ring[i].z);
+    shape.lineTo(ring[i].x, -ring[i].z);
   }
   shape.closePath();
   const geo = new THREE.ExtrudeGeometry(shape, {
@@ -99,7 +105,9 @@ export const buildOsmBackdrop = (): THREE.Group => {
     cz /= b.ringWorld.length;
 
     if (heroFootprintContains(cx, cz, placements)) continue;
-    if (!footprintClearsTrack(b.ringWorld)) continue;
+    // +6 m margin: OSM boxes at T8/T9/T15 cleared verts but straddled asphalt.
+    if (!footprintClearsTrack(b.ringWorld, TRACK_CLEARANCE_M + 6)) continue;
+    if (!pointClearsTrack(cx, cz, TRACK_CLEARANCE_M + 6)) continue;
 
     const heightU = b.heightM / METRES_PER_UNIT;
     const geo = extrudeFootprint(b.ringWorld, heightU);

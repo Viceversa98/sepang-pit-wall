@@ -3,6 +3,8 @@ import { createRoadRibbon } from "@/lib/roadGeometry";
 import { FIA, getTrackCurve, metresToUnits } from "@/lib/trackCurve";
 
 const MAIN_WIDTH = metresToUnits(FIA.trackWidthStartM);
+/** Extra runoff so raycast tires still find ground near the painted edges. */
+const COLLIDER_WIDTH = MAIN_WIDTH * 2.4;
 
 export type TrackColliderMesh = {
   vertices: Float32Array;
@@ -10,11 +12,12 @@ export type TrackColliderMesh = {
 };
 
 /**
- * Rapier trimesh data for the main circuit ribbon (closed loop).
+ * Rapier trimesh for the circuit (closed loop).
+ * Wider than visual asphalt so cars do not fall into the void at the kerb.
  */
 export const buildTrackCollider = (): TrackColliderMesh => {
   const mainGeo = createRoadRibbon(getTrackCurve(), {
-    width: MAIN_WIDTH,
+    width: COLLIDER_WIDTH,
     segments: 640,
     closed: true,
     yOffset: 0.02,

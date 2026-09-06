@@ -546,23 +546,31 @@ export const setF1CarBodyColor = (root: THREE.Object3D, color: string): void => 
   bodyMat.emissive.set(color);
 };
 
-/** Spin wheels and steer fronts from physics telemetry. */
+/**
+ * Spin + steer wheels. Use Euler YXZ only — mixing rotateX() with rotation.y=
+ * caused tyre meshes to spiral off their hubs.
+ * `steer` is radians from physics (or ~[-1,1] from legacy); clamp sensibly.
+ */
 export const updateF1CarWheels = (
   root: THREE.Object3D,
   speedMps: number,
   steer: number,
   dt: number,
 ): void => {
-  const spin = (speedMps / 0.36) * dt;
-  for (const name of ["wheelFL", "wheelFR", "wheelRL", "wheelRR"]) {
+  const spin = (Math.max(0, speedMps) / 0.36) * dt;
+  // Physics writes steeringAngle in radians; old path passed ~[-1,1].
+  const steerAngle =
+    Math.abs(steer) > 1.2 ? Math.max(-0.55, Math.min(0.55, steer)) : steer * 0.42;
+
+  for (const name of ["wheelFL", "wheelFR", "wheelRL", "wheelRR"] as const) {
     const wheel = root.getObjectByName(name);
-    if (wheel) wheel.rotateX(spin);
+    if (!wheel) continue;
+    wheel.rotation.order = "YXZ";
+    const isFront = name === "wheelFL" || name === "wheelFR";
+    wheel.rotation.y = isFront ? steerAngle : 0;
+    wheel.rotation.x += spin;
+    wheel.rotation.z = 0;
   }
-  const steerAngle = steer * 0.42;
-  const fl = root.getObjectByName("wheelFL");
-  const fr = root.getObjectByName("wheelFR");
-  if (fl) fl.rotation.y = steerAngle;
-  if (fr) fr.rotation.y = steerAngle;
 };
 
 /** Flash hazard lamps on a stationary retired car. */

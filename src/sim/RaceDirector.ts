@@ -14,6 +14,7 @@ import {
   type VehiclePoseInit,
 } from "@/shared/sharedState";
 import { setRaceSimContext } from "@/sim/raceSimContext";
+import { getLiveRaceCars } from "@/lib/raceLiveCars";
 import {
   FIELD_META,
   gridSlotForCar,
@@ -22,6 +23,7 @@ import {
   type CarState,
   type RacePhase,
 } from "@/stores/raceStore";
+import { PHYSICS_RIDE_HEIGHT } from "@/workers/raycastVehicle";
 
 const FIXED_TIMESTEP = 1 / 60;
 
@@ -30,8 +32,16 @@ export type WorkerHandles = {
   aiWorker: Worker;
 };
 
-/** Track-parametric poses from sampleCarPose; Rapier bodies follow via SAB (not free dynamics). */
-const isPhysicsKinematic = (_phase: RacePhase, _car: CarState): boolean => true;
+/**
+ * Path-rail arcade for every on-track racer (player + field AI).
+ * Pit / retired / finished stay kinematic (sampleCarPose / pit CAD).
+ */
+const isPhysicsKinematic = (phase: RacePhase, car: CarState): boolean => {
+  if (phase !== "racing") return true;
+  if (car.finished || car.status === "retired") return true;
+  if (car.isBoxing || car.garageReturn) return true;
+  return false;
+};
 
 const poseToInit = (
   car: CarState,
@@ -40,10 +50,13 @@ const poseToInit = (
 ): VehiclePoseInit => {
   const pose = sampleCarPose(car, phase, car.id, gridIndex);
   const quat = quatFromTangent(pose.tangent);
+  const kinematic = isPhysicsKinematic(phase, car);
+  // Seed free cars at suspension ride height so rays hit asphalt on first frame.
+  const y = kinematic ? pose.position.y : pose.position.y + PHYSICS_RIDE_HEIGHT;
   return {
-    position: [pose.position.x, pose.position.y, pose.position.z],
+    position: [pose.position.x, y, pose.position.z],
     quaternion: [quat.x, quat.y, quat.z, quat.w],
-    kinematic: isPhysicsKinematic(phase, car),
+    kinematic,
   };
 };
 
@@ -98,6 +111,7 @@ export class RaceDirector {
         vehicleCount: FIELD_META.length,
         collider,
         initialPoses,
+        waypoints: SEPANG_WAYPOINTS,
       },
     });
 
@@ -131,6 +145,18 @@ export class RaceDirector {
   resetPhysicsPoses(): void {
     if (!this.workers) return;
     const state = useRaceStore.getState();
+    const { floats } = this.shared;
+    // Seed SAB before the worker boots path-rail (postMessage is async).
+    FIELD_META.forEach((meta, index) => {
+      const car = state.cars.find((c) => c.id === meta.id);
+      if (!car) return;
+      const base = vehicleBaseIndex(index);
+      floats[base + VehicleField.lapProgress] = ((car.lapProgress % 1) + 1) % 1;
+      floats[base + VehicleField.targetSpeedMps] = 0;
+      floats[base + VehicleField.aiThrottle] = 0;
+      floats[base + VehicleField.aiBrake] = 0;
+      floats[base + VehicleField.laneOffsetM] = car.laneTargetM;
+    });
     const poses = FIELD_META.map((meta) => {
       const car = state.cars.find((c) => c.id === meta.id);
       if (!car) {
@@ -168,19 +194,41 @@ export class RaceDirector {
   private syncDriverInputs(): void {
     const state = useRaceStore.getState();
     const { floats } = this.shared;
+    const liveCars = getLiveRaceCars();
 
     FIELD_META.forEach((meta, index) => {
-      const car = state.cars.find((c) => c.id === meta.id);
+      const car =
+        liveCars.find((c) => c.id === meta.id) ??
+        state.cars.find((c) => c.id === meta.id);
       if (!car) return;
 
       const base = vehicleBaseIndex(index);
       const flags = vehicleFlagsDecode(floats[base + VehicleField.flags]);
+      const kinematic = isPhysicsKinematic(state.phase, car);
+
       floats[base + VehicleField.flags] = vehicleFlagsEncode({
         ...flags,
-        aiEnabled: false,
+        aiEnabled: !kinematic,
         playerControlled: car.isPlayer,
-        kinematic: true,
+        kinematic,
       });
+
+      if (!kinematic) {
+        // Path-rail follows traffic/grid lane (metres); pose from physics.
+        floats[base + VehicleField.laneOffsetM] = car.laneTargetM;
+        // Pit-exit only: seed SAB before rail boots (kinematic had zeroed linvel).
+        if (car.pitExitBlend < 0.2 && car.speedMps > 1) {
+          floats[base + VehicleField.speed] = car.speedMps;
+          floats[base + VehicleField.targetSpeedMps] = Math.max(
+            floats[base + VehicleField.targetSpeedMps] || 0,
+            car.speedMps,
+          );
+          floats[base + VehicleField.laneOffsetM] = car.laneTargetM;
+          floats[base + VehicleField.lapProgress] =
+            ((car.lapProgress % 1) + 1) % 1;
+        }
+        return;
+      }
 
       const pose = sampleCarPose(car, state.phase, car.id, gridSlotForCar(car));
       const quat = quatFromTangent(pose.tangent);
@@ -191,6 +239,7 @@ export class RaceDirector {
         [quat.x, quat.y, quat.z, quat.w],
       );
       floats[base + VehicleField.speed] = Math.max(0, car.speedMps);
+      floats[base + VehicleField.lapProgress] = ((car.lapProgress % 1) + 1) % 1;
     });
   }
 

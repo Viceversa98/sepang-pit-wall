@@ -61,6 +61,19 @@ export const standingsDistance = (
 export const raceDistance = (car: Pick<CarState, "currentLap" | "lapProgress">): number =>
   car.currentLap + car.lapProgress;
 
+/**
+ * Metres driven since lights-out.
+ * Grid sits at t≈0.998 with currentLap=1 — standingsDistance would read ~2 laps (~11 km).
+ * Stay 0 until the first S/F wrap (sfCrossedOnce).
+ */
+export const raceDistanceAchievedM = (
+  car: Pick<CarState, "currentLap" | "lapProgress" | "sfCrossedOnce">,
+): number => {
+  if (!car.sfCrossedOnce) return 0;
+  const t = ((car.lapProgress % 1) + 1) % 1;
+  return (Math.max(0, car.currentLap - 1) + t) * TRACK_LENGTH_M;
+};
+
 /** Retired on circuit — stationary but still blocks traffic. */
 export const isBrokenDownOnTrack = (
   car: Pick<CarState, "status" | "isBoxing" | "garageReturn">,
@@ -146,19 +159,13 @@ const applyGapSpeedCap = (
     const margin = gapM - MIN_GAP_M;
     cap = Math.sqrt(ahead.speedMps * ahead.speedMps + 2 * FOLLOW_BRAKE_MPS2 * margin);
   } else {
-    cap = ahead.speedMps * (0.7 + 0.3 * (gapM / MIN_GAP_M));
+    cap = ahead.speedMps * (0.55 + 0.35 * (gapM / MIN_GAP_M));
   }
   const rateLimited = Math.max(cap, car.speedMps - FOLLOW_MAX_DECEL_MPS2 * dt);
-  const before = car.speedMps;
   car.speedMps = Math.max(0, Math.min(car.speedMps, rateLimited));
-  // Braking for traffic should light the rear lamp like any other braking.
-  const decel = (before - car.speedMps) / Math.max(1e-4, dt);
-  if (decel > 3) {
-    car.brakeIntensity = Math.max(
-      car.brakeIntensity,
-      Math.min(1, decel / FOLLOW_MAX_DECEL_MPS2),
-    );
-  }
+  // Free path-rail: AI owns targetSpeed — fold follow into trafficPaceScale→gripScale.
+  const denom = Math.max(8, car.speedMps);
+  car.trafficPaceScale = Math.min(car.trafficPaceScale, Math.max(0.28, rateLimited / denom));
 };
 
 const corridorFree = (
@@ -289,10 +296,14 @@ const pickOvertakeLane = (
 const gridLaneFor = (car: CarState): number => gridLaneOffsetM(gridSlotForCar(car));
 
 const blendGridRelease = (car: CarState, trafficLane: number, raceElapsedMs: number): number => {
-  if (car.sfCrossedOnce || car.currentLap > 1 || raceElapsedMs >= GRID_RELEASE_MS) {
+  // Do NOT key off sfCrossedOnce — grid sits ~8 m before S/F, so the first
+  // wrap flips that flag instantly and yanked everyone to the racing line (left).
+  if (car.currentLap > 1 || raceElapsedMs >= GRID_RELEASE_MS) {
     return trafficLane;
   }
-  const k = Math.min(1, raceElapsedMs / GRID_RELEASE_MS);
+  // Ease-in: hold grid columns through the launch, then peel to racing line.
+  const u = Math.min(1, raceElapsedMs / GRID_RELEASE_MS);
+  const k = u * u;
   const gridLane = gridLaneFor(car);
   return gridLane + (trafficLane - gridLane) * k;
 };
@@ -340,6 +351,50 @@ const pickFreeRacingLine = (cars: CarState[], self: CarState, pressure: LanePres
   return self.laneOffsetM;
 };
 
+/** Keep ~1 car-width clear when two cars occupy the same slot (ghosting fix). */
+const SEPARATION_GAP_M = FIA.carLengthM * 1.35;
+
+const separateOverlappingCars = (cars: CarState[], dt: number): void => {
+  const alpha = 1 - Math.exp(-LANE_OVERTAKE_RESPONSIVENESS * 1.4 * dt);
+  for (let i = 0; i < cars.length; i += 1) {
+    const a = cars[i]!;
+    if (a.finished || a.isBoxing || a.status === "retired") continue;
+    for (let j = i + 1; j < cars.length; j += 1) {
+      const b = cars[j]!;
+      if (b.finished || b.isBoxing || b.status === "retired") continue;
+      if (Math.abs(a.laneOffsetM - b.laneOffsetM) > LANE_OVERLAP_M) continue;
+
+      const gapAb = alongGapM(a, b);
+      const gapBa = alongGapM(b, a);
+      const ahead = gapAb > 0 ? b : a;
+      const behind = gapAb > 0 ? a : b;
+      const gapM = Math.abs(gapAb > 0 ? gapAb : gapBa);
+      if (gapM <= 0 || gapM > SEPARATION_GAP_M) continue;
+
+      const cut = pickOvertakeLane(cars, behind, ahead);
+      if (cut !== null) {
+        behind.laneTargetM = commitLaneTarget(behind, cut);
+        behind.blockId = ahead.id;
+      } else {
+        const side =
+          Math.sign(behind.laneOffsetM - ahead.laneOffsetM) ||
+          (behind.id > ahead.id ? 1 : -1);
+        behind.laneTargetM = commitLaneTarget(
+          behind,
+          clampLane(ahead.laneOffsetM + side * Math.max(LANE_OVERLAP_M * 1.2, LANE_STEP_M)),
+        );
+        behind.blockId = ahead.id;
+      }
+      behind.laneOffsetM = clampLane(
+        behind.laneOffsetM + (behind.laneTargetM - behind.laneOffsetM) * alpha,
+      );
+      const stackPace = 0.32 + 0.45 * (gapM / SEPARATION_GAP_M);
+      behind.trafficPaceScale = Math.min(behind.trafficPaceScale, stackPace);
+      applyGapSpeedCap(behind, ahead, gapM, dt);
+    }
+  }
+};
+
 /**
  * Soft racing traffic: keep min gap, cut to free lane to overtake, lerp lanes.
  * Mutates `cars` in place — no per-frame shallow copies.
@@ -354,6 +409,7 @@ export const resolveTraffic = (
   const overtakeAlpha = 1 - Math.exp(-LANE_OVERTAKE_RESPONSIVENESS * dt);
 
   for (const car of cars) {
+    car.trafficPaceScale = 1;
     if (car.finished || car.status === "retired") {
       car.blockId = null;
       if (car.status === "retired") {
@@ -492,6 +548,9 @@ export const resolveTraffic = (
       }
     }
   }
+
+  // Soft lateral peel when cars share asphalt — path-rail has no car-car bodies.
+  separateOverlappingCars(cars, dt);
 
   // Closing-speed contacts → damage / spin / retire (skip at lights out while bodies settle)
   if (!skipCollisions) {
