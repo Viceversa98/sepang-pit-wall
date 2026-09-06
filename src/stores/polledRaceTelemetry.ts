@@ -1,4 +1,5 @@
-import { gameSpeedToDisplayKmh } from "@/lib/racePhysics";
+import { TRACK_LENGTH_M } from "@/lib/trackCurve";
+import { gameSpeedToDisplay, speedUnitLabel } from "@/lib/speedUnits";
 import {
   useRaceStore,
   type EngineMode,
@@ -67,7 +68,13 @@ export type PolledTimingState = {
   currentLapTimeMs: number;
   lastLapTimeMs: number;
   currentLap: number;
+  /** Display speed in SPEED_DISPLAY_UNIT (name kept for callers). */
   speedKmh: number;
+  speedUnit: string;
+  /** Metres completed this lap (0 → TRACK_LENGTH_M). */
+  lapMetres: number;
+  /** Full race lap length (m) for HUD context. */
+  trackLengthM: number;
   gripPct: number;
   damage: number;
   rainIntensity: number;
@@ -86,6 +93,9 @@ export const defaultTiming = (): PolledTimingState => ({
   lastLapTimeMs: 0,
   currentLap: 1,
   speedKmh: 0,
+  speedUnit: speedUnitLabel(),
+  lapMetres: 0,
+  trackLengthM: TRACK_LENGTH_M,
   gripPct: 100,
   damage: 0,
   rainIntensity: 0.2,
@@ -105,7 +115,10 @@ export const syncPolledTiming = (): PolledTimingState => {
     currentLapTimeMs: s.currentLapTimeMs,
     lastLapTimeMs: s.lastLapTimeMs,
     currentLap: s.currentLap,
-    speedKmh: Math.round(gameSpeedToDisplayKmh(s.speedMps ?? 0)),
+    speedKmh: Math.round(gameSpeedToDisplay(s.speedMps ?? 0)),
+    speedUnit: speedUnitLabel(),
+    lapMetres: Math.round((((s.lapProgress % 1) + 1) % 1) * TRACK_LENGTH_M),
+    trackLengthM: TRACK_LENGTH_M,
     gripPct: Math.round((s.grip ?? 1) * 100),
     damage: Math.round(s.damage ?? 0),
     rainIntensity: s.rainIntensity,
@@ -147,7 +160,7 @@ export const syncPolledHud = (): PolledHudState => {
   const kind = player?.incidentKind ?? s.incidentKind;
   const status = player?.status ?? s.carStatus;
   let incidentLabel: string | null = null;
-  if (status === "retired") incidentLabel = "RETIRED";
+  if (status === "retired" && !player?.garageReturn) incidentLabel = "RETIRED";
   else if (kind === "contact") incidentLabel = "CONTACT";
   else if (kind === "spin" || status === "spun") incidentLabel = "SPIN";
   else if (kind === "lockup" || status === "sliding") incidentLabel = "LOCKUP";

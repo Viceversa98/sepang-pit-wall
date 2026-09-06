@@ -40,8 +40,8 @@ export const idealRacingLineOffsetM = (input: RacingLineInput): number => {
 
   const straight = kNow < 0.11 && kAhead < 0.22;
   if (straight) {
-    const wideStraight = kFar < 0.18 ? 1.85 : 1.15;
-    // Spread the field across straights — tiny offsets stacked everyone in one corridor.
+    const wideStraight = kFar < 0.18 ? 2.35 : 1.55;
+    // Spread the field across straights — keep >1 car-width between biases.
     return lineBiasForCar(input.carId) * wideStraight * FIA.gridLaneOffsetM;
   }
 

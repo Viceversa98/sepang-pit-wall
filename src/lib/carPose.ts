@@ -10,7 +10,7 @@ import {
   PIT_ENTRY_T,
   PIT_EXIT_T,
 } from "@/lib/trackCurve";
-import { JACK_LIFT_M, PIT_POSE_BLEND } from "@/lib/pitStop";
+import { JACK_LIFT_M, PIT_EXIT_MERGE_LANE_M, PIT_POSE_BLEND } from "@/lib/pitStop";
 import type { CarState, RacePhase } from "@/stores/raceStore";
 import { gridSlotForCar } from "@/stores/raceStore";
 
@@ -76,14 +76,24 @@ export const sampleCarPose = (
 
     if (progress < PIT_POSE_BLEND) {
       const w = smoothstep(progress / PIT_POSE_BLEND);
-      _trackPoint.copy(trackCurve.getPointAt(wrap01(PIT_ENTRY_T)));
-      _trackTan.copy(trackCurve.getTangentAt(wrap01(PIT_ENTRY_T))).normalize();
+      // Peel from captured racing-line pose when available (avoids mid-track teleport).
+      if (car.pitEntryPos && car.pitEntryTan) {
+        _trackPoint.set(car.pitEntryPos.x, car.pitEntryPos.y, car.pitEntryPos.z);
+        _trackTan.set(car.pitEntryTan.x, 0, car.pitEntryTan.z).normalize();
+      } else {
+        _trackPoint.copy(trackCurve.getPointAt(wrap01(PIT_ENTRY_T)));
+        _trackTan.copy(trackCurve.getTangentAt(wrap01(PIT_ENTRY_T))).normalize();
+      }
       point = _blendPoint.copy(_trackPoint).lerp(_pitPoint, w);
       tan = _blendTan.copy(_trackTan).lerp(_pitTan, w).normalize();
     } else if (progress > 1 - PIT_POSE_BLEND) {
       const w = smoothstep((progress - (1 - PIT_POSE_BLEND)) / PIT_POSE_BLEND);
-      _trackPoint.copy(trackCurve.getPointAt(wrap01(PIT_EXIT_T)));
+      // Merge onto pit-side asphalt edge — never track centerline (reads as mid snap).
       _trackTan.copy(trackCurve.getTangentAt(wrap01(PIT_EXIT_T))).normalize();
+      _side.crossVectors(UP, _trackTan).normalize();
+      _trackPoint
+        .copy(trackCurve.getPointAt(wrap01(PIT_EXIT_T)))
+        .addScaledVector(_side, metresToUnits(PIT_EXIT_MERGE_LANE_M));
       point = _blendPoint.copy(_pitPoint).lerp(_trackPoint, w);
       tan = _blendTan.copy(_pitTan).lerp(_trackTan, w).normalize();
     } else {

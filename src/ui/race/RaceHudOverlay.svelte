@@ -34,6 +34,10 @@
     useRaceStore.getState().setCameraMode(mode);
   };
 
+  const handleOverviewZoom = (level: number) => {
+    useRaceStore.getState().setOverviewZoomLevel(level);
+  };
+
   const playerColor = $derived(
     race.cars.find((c) => c.isPlayer)?.color ?? race.selectedPlayerColor,
   );
@@ -83,6 +87,32 @@
         >
           Follow YOU
         </button>
+      </div>
+
+      <div
+        class="pointer-events-auto flex flex-col gap-1 rounded-sm border border-white/20 bg-black/60 p-1.5 backdrop-blur-sm"
+        role="group"
+        aria-label="Overview zoom level 1 close to 5 bird eye"
+      >
+        <p class="px-1 font-mono text-[8px] tracking-[0.18em] text-slate-400 uppercase">
+          Zoom {race.overviewZoomLevel}/5
+        </p>
+        <div class="flex gap-0.5">
+          {#each [1, 2, 3, 4, 5] as level}
+            <button
+              type="button"
+              class="min-h-9 min-w-9 rounded-sm px-1.5 font-mono text-[11px] tabular-nums transition-colors {race.overviewZoomLevel ===
+              level
+                ? 'bg-amber-500/30 text-amber-100'
+                : 'text-slate-400 hover:text-slate-200'}"
+              aria-pressed={race.overviewZoomLevel === level}
+              aria-label="Overview zoom level {level}"
+              onclick={() => handleOverviewZoom(level)}
+            >
+              {level}
+            </button>
+          {/each}
+        </div>
       </div>
 
       {#if race.raceControl !== "green"}

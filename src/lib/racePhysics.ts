@@ -100,13 +100,13 @@ export const longitudinalBrakeMps2 = (speedMps: number, grip: number): number =>
   return (BRAKE_MECH_MPS2 + BRAKE_AERO_MPS2 * aero) * g;
 };
 
-const ENGINE_MULT: Record<PhysicsEngineMode, number> = {
+export const ENGINE_MULT: Record<PhysicsEngineMode, number> = {
   push: 1.12,
   standard: 1,
   save: 0.9,
 };
 
-const COMPOUND_BASE: Record<PhysicsCompound, number> = {
+export const COMPOUND_BASE: Record<PhysicsCompound, number> = {
   soft: 1.1,
   medium: 1,
   hard: 0.94,
@@ -162,6 +162,26 @@ export const availableGrip = (
 ): number => {
   const dmg = 1 - Math.min(100, Math.max(0, damage)) / 200;
   return compoundRainGrip(compound, rain) * tireGripCurve(tireWear) * dmg;
+};
+
+/**
+ * Desk→AI pace scale: tires × engine × grip × race-control.
+ * Compressed toward 1 so soft+push is a ~10% edge, not a 30% breakaway pack split.
+ */
+export const strategyPaceScale = (
+  compound: PhysicsCompound,
+  engineMode: PhysicsEngineMode,
+  rain: number,
+  tireWear: number,
+  damage: number,
+  controlMult = 1,
+): number => {
+  const raw =
+    availableGrip(compound, rain, tireWear, damage, engineMode) *
+    ENGINE_MULT[engineMode] *
+    COMPOUND_BASE[compound] *
+    controlMult;
+  return 1 + (raw - 1) * 0.4;
 };
 
 let kappaLut: Float32Array | null = null;
@@ -373,6 +393,13 @@ const COMPOUND_WEAR_MULT: Record<PhysicsCompound, number> = {
 
 /** Target tire wear (% points) drained per lap — medium, dry, standard. */
 const TARGET_WEAR_PER_LAP = 30;
+
+/**
+ * Tire wear is desk-authoritative (main-thread `raceStore` only).
+ * Physics / AI workers must never write `tireWear`.
+ * Future online lobby: host/desk owns wear — never trust peer clients.
+ */
+export const TIRE_WEAR_AUTHORITY = "desk" as const;
 
 /** Base wear %/s — scales with lap length so stint length stays stable. */
 export const baseWearRatePerSec = (
@@ -617,9 +644,13 @@ export const applyCollisions = (cars: CollisionCar[]): void => {
   }
 };
 
-/** Real along-track m/s → km/h for HUD/telemetry. */
-export const gameSpeedToDisplayKmh = (speedMps: number): number =>
-  Math.max(0, speedMps * 3.6);
+/** @deprecated Import from `@/lib/speedUnits` — respects SPEED_DISPLAY_UNIT. */
+export {
+  gameSpeedToDisplay,
+  gameSpeedToDisplayKmh,
+  SPEED_DISPLAY_UNIT,
+  speedUnitLabel,
+} from "@/lib/speedUnits";
 
-/** @deprecated Use gameSpeedToDisplayKmh. */
-export const mpsToKmh = gameSpeedToDisplayKmh;
+/** @deprecated Use gameSpeedToDisplay from `@/lib/speedUnits`. */
+export { gameSpeedToDisplayKmh as mpsToKmh } from "@/lib/speedUnits";

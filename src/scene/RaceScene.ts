@@ -27,6 +27,12 @@ import {
 import { createClouds, sampleRainInField, type CloudsHandle } from "@/scene/clouds";
 import { PitStopCrewField } from "@/scene/PitStopCrew";
 import { metresToUnits } from "@/lib/trackCurve";
+import { getRaceSimShared } from "@/sim/raceSimContext";
+import {
+  vehicleBaseIndex,
+  VehicleField,
+  vehicleFlagsDecode,
+} from "@/shared/sharedState";
 import {
   clampPanDelta,
   clampCameraY,
@@ -51,10 +57,10 @@ import { detectRaceSceneQuality, type RaceSceneQuality } from "@/lib/qualityTier
 import { AdaptiveDpr } from "@/lib/adaptiveDpr";
 import { getHostElementSize } from "@/lib/viewportLayout";
 import { attachOverlayWebGlCanvas } from "@/lib/webglCanvas";
+import { overviewZoomPose } from "@/lib/overviewZoom";
+import { createMalaysiaFlag, type MalaysiaFlagHandle } from "@/scene/malaysiaFlag";
 
 const DEFAULT_RAIN_COUNT = 3200;
-const OVERVIEW_HEIGHT = 100;
-const OVERVIEW_BACK = 85;
 
 type CarEntry = {
   group: THREE.Group;
@@ -99,7 +105,9 @@ export class RaceScene {
   private fillLight!: THREE.DirectionalLight;
   private campus!: SepangCampusHandle;
   private trackside!: TracksideHandle;
+  private malaysiaFlag!: MalaysiaFlagHandle;
   private pitCrew!: PitStopCrewField;
+  private lastOverviewZoomLevel = -1;
   private terrain!: TerrainBuildResult;
   private atmosphere!: AtmosphereHandle;
   private disposed = false;
@@ -151,6 +159,9 @@ export class RaceScene {
 
     this.campus = createSepangCampus();
     this.scene.add(this.campus.group);
+
+    this.malaysiaFlag = createMalaysiaFlag();
+    this.scene.add(this.malaysiaFlag.group);
 
     this.trackside = buildTrackside();
     this.scene.add(this.trackside.group);
@@ -217,8 +228,8 @@ export class RaceScene {
     this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
     this.orbitControls.enablePan = true;
     this.orbitControls.screenSpacePanning = true;
-    this.orbitControls.minDistance = 45;
-    this.orbitControls.maxDistance = 280;
+    this.orbitControls.minDistance = 12;
+    this.orbitControls.maxDistance = 320;
     this.orbitControls.maxPolarAngle = Math.PI / 2.15;
     this.orbitControls.enabled = state.cameraMode === "overview";
     this.orbitControls.addEventListener("start", () => {
@@ -340,6 +351,7 @@ export class RaceScene {
     this.atmosphere.dispose();
     this.clouds.dispose();
     this.campus.dispose();
+    this.malaysiaFlag.dispose();
     this.trackside.dispose();
     this.pitCrew.dispose();
     this.startLights.userData.dispose();
@@ -449,6 +461,8 @@ export class RaceScene {
   }
 
   private updateCars(cars: CarState[], phase: RacePhase, dt: number): void {
+    const shared = getRaceSimShared();
+
     for (const meta of FIELD_META) {
       const car = cars.find((c) => c.id === meta.id);
       const entry = this.cars.get(meta.id);
@@ -467,22 +481,56 @@ export class RaceScene {
       entry.visual = smoothed;
       entry.visualReady = true;
 
-      const pose = sampleCarPose(
-        { ...car, ...smoothed },
-        phase,
-        meta.id,
-        gridSlotForCar(car),
-        this.poseScratch,
-      );
+      const vehicleIndex = gridIndexForCar(meta.id);
+      let usedPhysicsPose = false;
+      let steerTelemetry = 0;
+      let speedTelemetry = car.speedMps;
 
-      entry.group.position.copy(pose.position);
-      if (phase === "ready" || phase === "starting") {
-        entry.group.rotation.set(0, getGridSlot(car.gridSlot).rotationY, 0);
-      } else {
-        entry.group.quaternion.copy(quatFromTangent(pose.tangent, this.orientScratch));
+      if (shared && phase === "racing") {
+        const base = vehicleBaseIndex(vehicleIndex);
+        const floats = shared.floats;
+        const flags = vehicleFlagsDecode(floats[base + VehicleField.flags]);
+        if (!flags.kinematic) {
+          entry.group.position.set(
+            floats[base + VehicleField.posX],
+            floats[base + VehicleField.posY],
+            floats[base + VehicleField.posZ],
+          );
+          entry.group.quaternion.set(
+            floats[base + VehicleField.quatX],
+            floats[base + VehicleField.quatY],
+            floats[base + VehicleField.quatZ],
+            floats[base + VehicleField.quatW],
+          );
+          steerTelemetry = floats[base + VehicleField.steeringAngle];
+          speedTelemetry = Math.max(0, floats[base + VehicleField.speed]);
+          usedPhysicsPose = true;
+          // Prefer SAB brake over desk/traffic intensity (stuck-lamp fix).
+          car.brakeIntensity = Math.max(
+            0,
+            floats[base + VehicleField.brake],
+          );
+        }
       }
 
-      if (car.status === "sliding" || car.status === "spun") {
+      if (!usedPhysicsPose) {
+        const pose = sampleCarPose(
+          { ...car, ...smoothed },
+          phase,
+          meta.id,
+          gridSlotForCar(car),
+          this.poseScratch,
+        );
+
+        entry.group.position.copy(pose.position);
+        if (phase === "ready" || phase === "starting") {
+          entry.group.rotation.set(0, getGridSlot(car.gridSlot).rotationY, 0);
+        } else {
+          entry.group.quaternion.copy(quatFromTangent(pose.tangent, this.orientScratch));
+        }
+      }
+
+      if (!usedPhysicsPose && (car.status === "sliding" || car.status === "spun")) {
         const wobble =
           Math.sin(performance.now() * 0.028) * (car.status === "spun" ? 0.55 : 0.22);
         entry.group.rotateY(wobble);
@@ -505,7 +553,7 @@ export class RaceScene {
           updateF1CarWheels(mesh, 0, 0, dt);
         } else {
           updateF1CarBrakeLights(mesh, car.brakeIntensity);
-          updateF1CarWheels(mesh, car.speedMps, 0, dt);
+          updateF1CarWheels(mesh, speedTelemetry, steerTelemetry, dt);
         }
       }
     }
@@ -528,14 +576,20 @@ export class RaceScene {
     const entry = this.cars.get(PLAYER_ID);
     if (!player || !entry) return;
 
+    const zoom = overviewZoomPose(state.overviewZoomLevel);
+    if (state.overviewZoomLevel !== this.lastOverviewZoomLevel) {
+      this.lastOverviewZoomLevel = state.overviewZoomLevel;
+      this.overviewSnapKey = "";
+    }
+
     if (state.overviewFollow && this.orbitControls) {
       const worldPos = this.playerWorldPosition(player, entry, state.phase);
       if (!isFiniteVec3(worldPos)) return;
 
       if (this.overviewSnapKey !== "locked") {
         this.overviewSnapKey = "locked";
-        const camY = Math.max(worldPos.y + OVERVIEW_HEIGHT, MIN_CAMERA_Y + OVERVIEW_HEIGHT * 0.5);
-        this.camera.position.set(worldPos.x, camY, worldPos.z + OVERVIEW_BACK);
+        const camY = Math.max(worldPos.y + zoom.height, MIN_CAMERA_Y + zoom.height * 0.5);
+        this.camera.position.set(worldPos.x, camY, worldPos.z + zoom.back);
         this.camera.up.set(0, 1, 0);
         this.orbitControls.target.set(worldPos.x, Math.max(worldPos.y, 0), worldPos.z);
         safeLookAt(this.camera, this.orbitControls.target);

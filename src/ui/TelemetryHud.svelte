@@ -6,6 +6,7 @@
     VehicleField,
     type SharedSimViews,
   } from "@/shared/sharedState";
+  import { gameSpeedToDisplay, speedUnitLabel } from "@/lib/speedUnits";
 
   interface Props {
     shared: SharedSimViews;
@@ -14,7 +15,8 @@
 
   let { shared, vehicleIndex = 0 }: Props = $props();
 
-  let speedKph = $state(0);
+  let speedDisplay = $state(0);
+  let unitLabel = $state(speedUnitLabel());
   let physicsTick = $state(0);
   let aiTick = $state(0);
   let waypointIndex = $state(0);
@@ -24,7 +26,8 @@
   const poll = (): void => {
     const base = vehicleBaseIndex(vehicleIndex);
     const speed = shared.floats[base + VehicleField.speed];
-    speedKph = speed * 3.6;
+    speedDisplay = gameSpeedToDisplay(speed);
+    unitLabel = speedUnitLabel();
     physicsTick = Atomics.load(shared.header, HeaderIndex.physicsTick);
     aiTick = Atomics.load(shared.header, HeaderIndex.aiTick);
     waypointIndex = shared.floats[base + VehicleField.waypointIndex] | 0;
@@ -43,7 +46,7 @@
 <div class="hud">
   <div class="panel">
     <div class="label">SPEED</div>
-    <div class="value">{speedKph.toFixed(0)} <span class="unit">KPH</span></div>
+    <div class="value">{speedDisplay.toFixed(0)} <span class="unit">{unitLabel}</span></div>
   </div>
   <div class="panel">
     <div class="label">PHYS / AI</div>

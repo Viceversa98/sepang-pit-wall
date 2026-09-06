@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PIT_LANE_LIMIT_KMH } from "@/lib/pitStop";
+  import { speedUnitLabel } from "@/lib/speedUnits";
   import { isMobileRaceLayout, type RaceLayoutMode } from "@/lib/viewportLayout";
   import {
     defaultHud,
@@ -131,6 +132,10 @@
     useRaceStore.getState().setCameraMode(mode);
   };
 
+  const handleOverviewZoom = (level: number) => {
+    useRaceStore.getState().setOverviewZoomLevel(level);
+  };
+
   const handleToggleMute = () => {
     unlockRaceAudioFromGesture();
     void unlockRaceAudio().then((ok) => {
@@ -177,7 +182,8 @@
             </p>
             <p class="font-mono text-[10px] text-white/55">
               L{Math.min(timing.currentLap, race.totalLaps)}/{race.totalLaps}
-              · {timing.speedKmh} km/h
+              · {timing.speedKmh} {timing.speedUnit ?? speedUnitLabel()}
+              · {timing.lapMetres ?? 0}m
               · <span class="uppercase {compoundTint[timing.currentCompound] ?? ''}"
                 >{compoundLetter}</span
               >
@@ -236,7 +242,7 @@
 
       <!-- Landscape: compact timing card top-right -->
       <aside
-        class="pointer-events-auto absolute top-2 right-2 z-20 flex w-[min(200px,42%)] flex-col gap-1.5 rounded-sm border border-white/20 bg-black/70 p-2 text-slate-50 backdrop-blur-md"
+        class="pointer-events-auto absolute top-2 right-2 z-20 flex w-[min(260px,48%)] flex-col gap-1.5 rounded-sm border border-white/20 bg-black/70 p-2 text-slate-50 backdrop-blur-md"
         aria-label="Timing compact"
       >
         <div class="flex items-baseline justify-between gap-2">
@@ -289,6 +295,8 @@
               <span class="min-w-0 flex-1 truncate {row.isPlayer ? 'font-semibold' : ''}"
                 >{row.name}</span
               >
+              <span class="w-11 text-right tabular-nums text-white/70" title="Speed">{row.speedDisplay}&nbsp;km/h</span>
+              <span class="w-10 text-right tabular-nums text-cyan-200/80" title="Km achieved">{row.distanceKm.toFixed(1)}&nbsp;km</span>
               <span class="tabular-nums text-white/45">{row.gapLabel}</span>
             </li>
           {/each}
@@ -351,6 +359,28 @@
         onclick={() => handleCameraMode("follow")}
       >
         YOU
+      </button>
+      <button
+        type="button"
+        class="{pwButtonClass('secondary', 'touch', { className: 'min-w-9 border-transparent bg-transparent' })}"
+        aria-label="Overview zoom in"
+        onclick={() => handleOverviewZoom(race.overviewZoomLevel - 1)}
+      >
+        −
+      </button>
+      <span
+        class="flex min-h-11 min-w-9 items-center justify-center font-mono text-[11px] text-amber-100 tabular-nums"
+        aria-live="polite"
+      >
+        Z{race.overviewZoomLevel}
+      </span>
+      <button
+        type="button"
+        class="{pwButtonClass('secondary', 'touch', { className: 'min-w-9 border-transparent bg-transparent' })}"
+        aria-label="Overview zoom out"
+        onclick={() => handleOverviewZoom(race.overviewZoomLevel + 1)}
+      >
+        +
       </button>
     </div>
     {/if}
@@ -463,6 +493,8 @@
               <span class="uppercase {compoundTint[row.compound] ?? 'text-white/40'}"
                 >{row.compound[0]}</span
               >
+              <span class="w-12 text-right tabular-nums text-white/70" title="Speed">{row.speedDisplay}&nbsp;km/h</span>
+              <span class="w-11 text-right tabular-nums text-cyan-200/80" title="Km achieved">{row.distanceKm.toFixed(1)}&nbsp;km</span>
               <span class="w-12 text-right tabular-nums text-white/45">{row.gapLabel}</span>
             </li>
           {/each}

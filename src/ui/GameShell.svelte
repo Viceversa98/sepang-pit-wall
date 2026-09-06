@@ -206,7 +206,7 @@
         <StartLightsHud {layoutMode} />
         <RaceCanvas />
         <CoachOverlay />
-        {#if race.phase === "finished" && race.playMode !== "mission"}
+        {#if race.playMode !== "mission" && (race.phase === "finished" || race.standings.some((r) => r.isPlayer && r.finished))}
           <PodiumOverlay />
         {/if}
         {#if layoutMode !== "mobilePortrait"}

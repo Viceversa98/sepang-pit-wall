@@ -1,0 +1,25 @@
+{
+  "circuit": "Sepang International Circuit",
+  "lengthM": 5543,
+  "f1LapRecord": "1:34.080",
+  "source": "player turn telemetry + curvature-aligned apex t; mins tuned to 11-25 flying-lap p10",
+  "segments": [
+    { "id": "pit_straight", "label": "Main Straight", "t0": 0.0, "t1": 0.085, "minKph": 310, "maxKph": 335 },
+    { "id": "t1", "label": "Turn 1", "t0": 0.085, "t1": 0.11, "apexT": 0.1, "minKph": 80, "maxKph": 280 },
+    { "id": "t2", "label": "Turn 2", "t0": 0.11, "t1": 0.145, "apexT": 0.117, "minKph": 75, "maxKph": 220 },
+    { "id": "t3", "label": "Turn 3", "t0": 0.145, "t1": 0.235, "apexT": 0.19, "minKph": 215, "maxKph": 280 },
+    { "id": "t4", "label": "Turn 4", "t0": 0.235, "t1": 0.3, "apexT": 0.264, "minKph": 115, "maxKph": 250 },
+    { "id": "t5", "label": "Turn 5", "t0": 0.3, "t1": 0.345, "apexT": 0.324, "minKph": 230, "maxKph": 290 },
+    { "id": "t6", "label": "Turn 6", "t0": 0.345, "t1": 0.41, "apexT": 0.367, "minKph": 200, "maxKph": 270 },
+    { "id": "t7_t8", "label": "Turn 7 & 8", "t0": 0.41, "t1": 0.51, "apexT": 0.45, "minKph": 160, "maxKph": 240 },
+    { "id": "t9", "label": "Turn 9", "t0": 0.51, "t1": 0.565, "apexT": 0.549, "minKph": 65, "maxKph": 185 },
+    { "id": "t10", "label": "Turn 10", "t0": 0.565, "t1": 0.6, "apexT": 0.57, "minKph": 155, "maxKph": 250 },
+    { "id": "t11", "label": "Turn 11", "t0": 0.6, "t1": 0.655, "apexT": 0.613, "minKph": 125, "maxKph": 240 },
+    { "id": "t12", "label": "Turn 12", "t0": 0.655, "t1": 0.71, "apexT": 0.674, "minKph": 230, "maxKph": 310 },
+    { "id": "t13", "label": "Turn 13", "t0": 0.71, "t1": 0.78, "apexT": 0.738, "minKph": 140, "maxKph": 300 },
+    { "id": "t14", "label": "Turn 14", "t0": 0.78, "t1": 0.84, "apexT": 0.81, "minKph": 175, "maxKph": 315 },
+    { "id": "back_straight", "label": "Back Straight", "t0": 0.84, "t1": 0.895, "minKph": 300, "maxKph": 335 },
+    { "id": "t15", "label": "Turn 15", "t0": 0.895, "t1": 0.96, "apexT": 0.91, "minKph": 70, "maxKph": 325 },
+    { "id": "pit_exit_straight", "label": "Pit Straight exit", "t0": 0.96, "t1": 1.0, "minKph": 290, "maxKph": 330 }
+  ]
+}

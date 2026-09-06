@@ -11,6 +11,7 @@ import {
   TRACK_LENGTH_M,
 } from "./trackCurve";
 import { sampleTerrainHeight } from "./terrainHeight";
+import { footprintClearsTrack } from "./trackClearance";
 
 export type CampusBuildingId =
   | "pit"
@@ -49,7 +50,7 @@ export type CampusBuildingDef = {
   kit: CampusKit;
   /** Track progress 0–1 (S/F = 0). */
   t: number;
-  /** +1 outside / V-island, −1 infield. */
+  /** +1 outside (grandstand/north of KL), −1 infield (between straights). */
   bank: 1 | -1;
   /** Grass/runoff between kerb (or pit edge) and track-facing face, metres. */
   lateralClearanceM: number;
@@ -102,13 +103,16 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
   {
     id: "mainGrandstandSouth",
     kit: "mainStand",
-    t: 0.94,
+    // Was t=0.94 / 360 m on +bank — that chord sat on the T13–T15 fold
+    // (centroid looked fine, footprint minDist ~0.1 m). Keep opposite-pit
+    // (+bank) but park on the main-straight tail only.
+    t: 0.985,
     bank: 1,
-    lateralClearanceM: 44,
-    sizeM: { x: 20, y: 16, z: 360 },
+    lateralClearanceM: 40,
+    sizeM: { x: 20, y: 16, z: 200 },
     alongM: 0,
-    tSpanM: 360,
-    segmentCount: 8,
+    tSpanM: 200,
+    segmentCount: 5,
     shadow: "cast",
     lod: "hero",
   },
@@ -138,9 +142,12 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     id: "k1",
     kit: "covered",
     /** Covered stand outside Turn 1 (right-hander — driver-left / -bank side). */
-    t: 0.107,
+    // t=0.107 clipped asphalt; t=0.10 + 22 m still 0.03 m under limit on seg1.
+    // Keep well clear of T1 fold: kit footprint clears ~17 m at 34 m lateral,
+    // but merged GLB AABB corners still dipped under TRACK_CLEARANCE_M.
+    t: 0.1,
     bank: -1,
-    lateralClearanceM: 22,
+    lateralClearanceM: 44,
     sizeM: { x: 14, y: 12, z: 55 },
     alongM: 0,
     tSpanM: 55,
@@ -154,7 +161,7 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     /** OSM-aligned: Turns 7 & 8. */
     t: 0.436,
     bank: 1,
-    lateralClearanceM: 36,
+    lateralClearanceM: 48,
     sizeM: { x: 18, y: 12, z: 140 },
     alongM: 0,
     tSpanM: 140,
@@ -170,6 +177,7 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     lateralClearanceM: 0,
     sizeM: { x: 24, y: 12, z: 18 },
     alongM: 0,
+    // Mirrored track (T1 right-hander) — keep fixedWorld on −X with OSM.
     fixedWorld: { x: -16.615, z: 146.622 },
     yawOverride: -0.2,
     shadow: "receive",
@@ -180,7 +188,7 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     kit: "medical",
     t: 0.946,
     bank: -1,
-    lateralClearanceM: 32,
+    lateralClearanceM: 48,
     sizeM: { x: 18, y: 8, z: 14 },
     alongM: 0,
     shadow: "receive",
@@ -217,11 +225,12 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     kit: "southPaddock",
     t: 0.825,
     bank: -1,
-    lateralClearanceM: 28,
-    sizeM: { x: 28, y: 10, z: 96 },
+    // Seg2 of the 96 m / 3-bay block clipped a neighbouring ribbon; shorten.
+    lateralClearanceM: 40,
+    sizeM: { x: 28, y: 10, z: 64 },
     alongM: 0,
-    tSpanM: 96,
-    segmentCount: 3,
+    tSpanM: 64,
+    segmentCount: 2,
     shadow: "receive",
     lod: "far",
   },
@@ -242,8 +251,10 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
     id: "hillstandC2",
     kit: "hillCanopy",
     /** Inferred from OSM support cluster — Turns 9–11 GA embankment. */
+    // -bank @ 85 m landed the 45×90 m box on the main-straight ribbon
+    // (nearestT ~0.92). +bank keeps the footprint off asphalt.
     t: 0.489,
-    bank: -1,
+    bank: 1,
     lateralClearanceM: 85,
     sizeM: { x: 45, y: 8, z: 90 },
     alongM: 0,
@@ -255,10 +266,12 @@ export const CAMPUS_BUILDINGS: readonly CampusBuildingDef[] = [
   {
     id: "motorsportPark",
     kit: "workshops",
+    // Huge -bank block straddled the folded main-straight approach; flip
+    // side and shrink depth so the AABB stays off the ribbon.
     t: 0.44,
-    bank: -1,
+    bank: 1,
     lateralClearanceM: 95,
-    sizeM: { x: 80, y: 8, z: 180 },
+    sizeM: { x: 80, y: 8, z: 80 },
     alongM: 0,
     shadow: "receive",
     lod: "far",
@@ -293,6 +306,8 @@ export const offsetBesideTrack = (
   const pitOuter = opts.includePit ? PIT_LANE_OFFSET + PIT_HALF : MAIN_HALF;
   const edge = Math.max(MAIN_HALF, pitOuter);
   const lateral = edge + metresToUnits(opts.runoffM) + opts.halfWidth;
+  // pose.side = +driver-right. Pit is on −side (screen-right facing T1); outside
+  // stands use bank +1 → +side (opposite of pit).
   const pos = pose.position
     .clone()
     .addScaledVector(pose.side, opts.bank * lateral)
@@ -357,11 +372,11 @@ export const resolveCampusPlacements = (): CampusPlacement[] => {
         const tangent = pitCurve.getTangentAt(clamped).normalize();
         const side = new THREE.Vector3().crossVectors(up, tangent).normalize();
         // Pose already on pit centerline — do not re-add PIT_LANE_OFFSET.
-        // bank -1 = outside of pit forward (paddock side, away from racing line).
-        // From pit centerline: pit half-width + runoff + building half (no MAIN_HALF — already off racing line).
+        // side = driver-right of pit forward; paddock is −side (away from racing line).
         const pitHalf = metresToUnits(FIA.pitWidthM) / 2;
         const lateral =
           pitHalf + metresToUnits(def.lateralClearanceM) + size.x / 2;
+        // Pit on −race-side: paddock is further −side from pit centerline (−lateral).
         const position = point
           .clone()
           .addScaledVector(side, -lateral)
@@ -390,11 +405,22 @@ export const resolveCampusPlacements = (): CampusPlacement[] => {
         includePit: def.includePit,
         runoffM: def.lateralClearanceM,
       });
+      const yaw = def.yawOverride ?? yawFromTangent(pose.tangent);
+      const hx = size.x / 2;
+      const hz = size.z / 2;
+      const ring = [
+        cornerWorld(position, yaw, -hx, -hz),
+        cornerWorld(position, yaw, -hx, hz),
+        cornerWorld(position, yaw, hx, -hz),
+        cornerWorld(position, yaw, hx, hz),
+      ];
+      if (!footprintClearsTrack(ring)) continue;
+
       out.push({
         id: def.id,
         def,
         position,
-        yaw: def.yawOverride ?? yawFromTangent(pose.tangent),
+        yaw,
         size,
         segmentIndex: i,
         segmentCount: count,
